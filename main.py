@@ -1,0 +1,95 @@
+#!/usr/bin/env python3
+import gi
+gi.require_version('Gtk', '4.0')
+gi.require_version('Vte', '3.91')
+from gi.repository import Gtk, GLib, Vte, Pango
+import sys
+import os
+
+class TerminalWindow(Gtk.ApplicationWindow):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.set_default_size(600, 400)
+        self.set_title("KIterm")
+
+        self.terminal = Vte.Terminal()
+        self.set_child(self.terminal)
+
+        # Configure the terminal
+        self.terminal.set_font_scale(1.0)
+        font_desc = Pango.FontDescription.from_string("MesloLGS NF Regular 12")
+        self.terminal.set_font(font_desc)
+        # You can customize colors, e.g.:
+        # self.terminal.set_color_foreground(Gdk.RGBA(red=0.0, green=0.0, blue=0.0, alpha=1.0))
+        # self.terminal.set_color_background(Gdk.RGBA(red=1.0, green=1.0, blue=1.0, alpha=0.0))
+
+        # Spawn a shell
+        # Determine the default shell
+        shell = "/bin/fish"
+        # shell = os.environ.get('SHELL', '/bin/sh')
+        
+        if not shell or not os.path.exists(shell) or not os.access(shell, os.X_OK):
+            # Fallback if SHELL is not set, invalid, or not executable
+            # Common shells to try
+            possible_shells = ['/bin/fish','/bin/zsh', '/bin/bash', '/bin/sh']
+            for s in possible_shells:
+                if os.path.exists(s) and os.access(s, os.X_OK):
+                    shell = s
+                    break
+            else:
+                # If no suitable shell is found, this will likely fail,
+                # but it's better than passing a non-existent one.
+                shell = '/bin/sh'
+
+
+        self.terminal.spawn_async(
+            Vte.PtyFlags.DEFAULT,     # PTY flags
+            os.environ['HOME'],       # Working directory (optional, None for current)
+            [shell],                  # Command and arguments (argv)
+            [],                       # Environment variables (envv, None for current)
+            GLib.SpawnFlags.DEFAULT,  # Spawn flags
+            None,                     # Child setup function (GLib.spawn_async_with_fds)
+            None,                     # Child setup user data
+            -1,                       # Timeout (milliseconds, -1 for no timeout)
+            None,                     # Cancellable
+            self.on_spawn_finished,   # Callback
+            ()                        # Callback user data
+        )
+
+        self.terminal.connect("child-exited", self.on_child_exited)
+
+    # TODO: Find out why the callback parameters are so weird
+    def on_spawn_finished(self, terminal,  pid , error, user_data):
+        print(f"on_spawn_finished called:")
+        # print(f"  self: {self}")
+        # print(f"  terminal: {terminal}")
+        print(f"  pid: {pid}")
+        print(f"  error: {error}")
+        print(f"  user_data: {user_data}")
+
+
+    def on_child_exited(self, terminal, exit_status):
+        print(f"Terminal child exited with status: {exit_status}")
+        # You might want to close the window or re-spawn, etc.
+        # For this simple example, we'll close the window.
+        self.close()
+
+class MyApplication(Gtk.Application):
+    def __init__(self):
+        super().__init__(application_id='com.example.Gtk4VteApp')
+        GLib.set_application_name('KIterm')
+
+    def do_activate(self):
+        win = self.props.active_window
+        if not win:
+            win = TerminalWindow(application=self)
+        win.present()
+
+def main():
+    app = MyApplication()
+    exit_status = app.run(sys.argv)
+    sys.exit(exit_status)
+
+if __name__ == '__main__':
+    main() 
