@@ -1,0 +1,121 @@
+/* KIterm AI Assistant Styles */
+
+.ai-panel {
+    background-color: @theme_bg_color;
+}
+
+.ai-header {
+    border-bottom: 1px solid @borders;
+    padding: 4px;
+}
+
+.ai-input {
+    border-top: 1px solid @borders;
+    padding: 4px;
+}
+
+.ai-scrolled-window {
+    background-color: @theme_bg_color;
+}
+
+.ai-text-view {
+    background-color: @theme_base_color;
+    color: @theme_text_color;
+}
+
+.ai-panel entry {
+    background-color: @theme_base_color;
+    color: @theme_text_color;
+}
+
+.ai-panel textview {
+    background-color: @theme_base_color;
+    color: @theme_text_color;
+}
+
+/* Chat message styling */
+.user-message {
+    background-color: alpha(@theme_selected_bg_color, 0.1);
+    border-radius: 8px;
+    padding: 8px;
+    margin: 4px;
+}
+
+.ai-message {
+    background-color: alpha(@theme_bg_color, 0.6);
+    border-radius: 8px;
+    padding: 8px;
+    margin: 4px;
+    border-left: 2px solid @theme_selected_bg_color;
+}
+
+.system-message {
+    color: @theme_selected_fg_color;
+    font-style: italic;
+    margin: 4px;
+    font-size: 0.9em;
+}
+
+.timestamp {
+    font-size: 0.8em;
+    color: alpha(@theme_fg_color, 0.7);
+}
+
+/* Terminal preview styling */
+.terminal-preview-content {
+    font-family: monospace;
+    background-color: alpha(@theme_bg_color, 0.8);
+    padding: 4px;
+}
+
+/* Typing indicator animation */
+.typing-indicator {
+    font-weight: bold;
+    color: @theme_selected_bg_color;
+}
+
+/* Paned handle styling - make it more visible */
+paned > separator {
+    background-color: @borders;
+    min-width: 4px;
+}
+
+/* Markdown styling */
+.markdown-code {
+    font-family: monospace;
+    background-color: alpha(@theme_bg_color, 0.3);
+    border-radius: 3px;
+    padding: 0 2px;
+}
+
+.markdown-code-block {
+    font-family: monospace;
+    background-color: alpha(@theme_bg_color, 0.3);
+    border-radius: 4px;
+    padding: 8px;
+    margin: 4px 0;
+}
+
+.markdown-blockquote {
+    border-left: 3px solid alpha(@theme_selected_bg_color, 0.5);
+    padding-left: 8px;
+    font-style: italic;
+    color: alpha(@theme_fg_color, 0.8);
+}
+
+.markdown-link {
+    color: @link_color;
+    text-decoration: underline;
+}
+
+.markdown-heading {
+    font-weight: bold;
+    margin-top: 12px;
+    margin-bottom: 6px;
+}
+
+/* Custom font classes */
+.monospace-text {
+    font-family: monospace;
+    font-size: 9pt;
+} 

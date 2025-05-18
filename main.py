@@ -2,15 +2,22 @@
 import gi
 gi.require_version('Gtk', '4.0')
 gi.require_version('Vte', '3.91')
-from gi.repository import Gtk, GLib, Vte, Pango
+from gi.repository import Gtk, GLib, Vte, Pango, Gdk
 import sys
 import os
+
+# Import our modules
+from ai_panel import AIPanelManager
+from settings_manager import SettingsManager
 
 class TerminalWindow(Gtk.ApplicationWindow):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.set_default_size(600, 400)
+        # Initialize settings
+        self.settings_manager = SettingsManager()
+
+        self.set_default_size(800, 500)
         self.set_title("KIterm")
 
         # Create a horizontal paned container
@@ -22,19 +29,18 @@ class TerminalWindow(Gtk.ApplicationWindow):
         self.paned.set_start_child(self.terminal)
         self.paned.set_resize_start_child(True)
         
-        # Create the AI Chat panel
-        self.chat_panel = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
-        self.chat_label = Gtk.Label(label="AI Chat")
-        self.chat_label.set_margin_top(10)
-        self.chat_label.set_margin_bottom(10)
-        self.chat_panel.append(self.chat_label)
+        # Create the AI Chat panel using our panel manager with settings
+        self.ai_panel_manager = AIPanelManager(self.terminal, self.settings_manager)
+        self.chat_panel = self.ai_panel_manager.create_panel()
         
         # Add the chat panel to the paned container
         self.paned.set_end_child(self.chat_panel)
         self.paned.set_resize_end_child(True)
         
-        # Set the initial position (70% for terminal, 30% for chat panel)
-        self.paned.set_position(420)
+        # Set the initial position based on settings
+        panel_width = self.settings_manager.default_panel_width
+        window_width = self.get_default_size().width
+        self.paned.set_position(window_width - panel_width)
 
         # Configure the terminal
         self.terminal.set_font_scale(1.0)
@@ -46,13 +52,12 @@ class TerminalWindow(Gtk.ApplicationWindow):
 
         # Spawn a shell
         # Determine the default shell
-        shell = "/bin/fish"
-        # shell = os.environ.get('SHELL', '/bin/sh')
+        shell = os.environ.get('SHELL', '/bin/zsh')
         
         if not shell or not os.path.exists(shell) or not os.access(shell, os.X_OK):
             # Fallback if SHELL is not set, invalid, or not executable
             # Common shells to try
-            possible_shells = ['/bin/fish','/bin/zsh', '/bin/bash', '/bin/sh']
+            possible_shells = ['/bin/zsh', '/bin/bash', '/bin/sh']
             for s in possible_shells:
                 if os.path.exists(s) and os.access(s, os.X_OK):
                     shell = s
@@ -78,9 +83,31 @@ class TerminalWindow(Gtk.ApplicationWindow):
         )
 
         self.terminal.connect("child-exited", self.on_child_exited)
+        
+        # Register settings change handler
+        self.settings_manager.register_settings_change_callback(self.on_settings_changed)
+
+    def on_settings_changed(self):
+        """Handle settings changes"""
+        print("Main Window: Settings changed")
+        
+        # Update panel width according to settings
+        panel_width = self.settings_manager.default_panel_width
+        current_width = self.get_width()
+        
+        # Ensure we don't make the panel too wide for the window
+        if panel_width > current_width * 0.8:
+            # Limit to 80% of window width
+            panel_width = int(current_width * 0.8)
+            print(f"  Panel width limited to {panel_width}px (80% of window)")
+        
+        # Set the new position
+        new_position = current_width - panel_width
+        print(f"  Updating panel position: {new_position} (window width: {current_width}, panel width: {panel_width})")
+        self.paned.set_position(new_position)
 
     # TODO: Find out why the callback parameters are so weird
-    def on_spawn_finished(self, terminal,  pid , error, user_data):
+    def on_spawn_finished(self, terminal, pid, error, user_data):
         print(f"on_spawn_finished called:")
         # print(f"  self: {self}")
         # print(f"  terminal: {terminal}")
