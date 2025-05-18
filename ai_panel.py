@@ -28,6 +28,18 @@ class AIPanelManager:
         
         # Register for settings changes
         self.settings_manager.register_settings_change_callback(self.on_settings_changed)
+        
+        # Streaming update rate limiting
+        self.last_stream_update_time = 0
+        self.stream_update_interval = 50  # Minimum ms between updates
+        self.pending_stream_text = None
+        self.stream_update_timeout_id = None
+        
+        # Scroll handling
+        self.last_scroll_time = 0
+        self.scroll_timeout_id = None
+        self.auto_scroll_locked = False  # True if user has scrolled up
+        self.is_programmatic_scroll = False  # True during our own scroll operations
     
     def _add_css_styling(self):
         """Add CSS styling for the panel components"""
@@ -105,6 +117,11 @@ class AIPanelManager:
         chat_scroll.set_vexpand(True)
         chat_scroll.add_css_class("ai-scrolled-window")
         
+        # Connect to vadjustment changes to detect user scrolling
+        vadj = chat_scroll.get_vadjustment()
+        if vadj:
+            vadj.connect("value-changed", self._on_vadj_changed)
+        
         # Use a VBox for the conversation container
         chat_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
         chat_box.set_margin_start(8)
@@ -121,11 +138,23 @@ class AIPanelManager:
         query_entry = Gtk.Entry()
         query_entry.set_placeholder_text("Type your question here...")
         query_entry.connect("activate", self.on_send_clicked)
+        
+        # Add key event controller for keyboard shortcuts
+        key_controller = Gtk.EventControllerKey()
+        key_controller.connect("key-pressed", self.on_key_pressed)
+        query_entry.add_controller(key_controller)
+        
         query_box.append(query_entry)
         
         send_button = Gtk.Button.new_with_label("Ask AI")
         send_button.connect("clicked", self.on_send_clicked)
         query_box.append(send_button)
+        
+        # Stop button (initially hidden)
+        stop_button = Gtk.Button.new_with_label("Stop")
+        stop_button.connect("clicked", self.on_stop_clicked)
+        stop_button.set_visible(False)
+        query_box.append(stop_button)
         
         panel.append(query_box)
         
@@ -133,9 +162,12 @@ class AIPanelManager:
         self.panels = {
             'panel': panel,
             'chat_box': chat_box,
+            'chat_scroll': chat_scroll,  # Store direct reference to ScrolledWindow
             'terminal_preview_view': terminal_preview_view,
             'terminal_preview_expander': terminal_preview_expander,
             'query_entry': query_entry,
+            'send_button': send_button,
+            'stop_button': stop_button,
             'conversation': [],
         }
         
@@ -229,6 +261,62 @@ class AIPanelManager:
         # Add a new welcome message
         self.add_system_message("Conversation cleared. Ask a new question.")
     
+    def on_key_pressed(self, controller, keyval, keycode, state):
+        """Handle key press events in GTK4"""
+        # Check for ESC key (GDK_KEY_Escape = 65307)
+        if keyval == 65307:
+            self.stop_active_request()
+            return True  # Signal that the event was handled
+            
+        return False  # Allow other handlers to process the event
+    
+    def on_stop_clicked(self, widget):
+        """Handle stop button click"""
+        self.stop_active_request()
+    
+    def stop_active_request(self):
+        """Stop the active API request"""
+        if not self.panels.get('stream_active', False):
+            return
+            
+        # Cancel the API request
+        self.api_handler.cancel_request()
+        
+        # Clear the stream active flag
+        self.panels['stream_active'] = False
+        
+        # Stop typing animation if it's running
+        self._stop_typing_animation()
+        
+        # Cancel any pending stream updates
+        if self.stream_update_timeout_id:
+            GLib.source_remove(self.stream_update_timeout_id)
+            self.stream_update_timeout_id = None
+            
+        # Cancel any pending scroll updates
+        if self.scroll_timeout_id:
+            GLib.source_remove(self.scroll_timeout_id)
+            self.scroll_timeout_id = None
+        
+        # Update the UI to show the send button
+        self._update_button_state()
+        
+        # Add a note that the request was canceled
+        if 'current_response_buffer' in self.panels and self.panels['current_response_buffer']:
+            buffer = self.panels['current_response_buffer']
+            current_text = self.markdown_formatter.get_buffer_text(buffer)
+            
+            if current_text.strip():
+                # If there was already some response, append the cancellation note
+                updated_text = current_text + "\n\n*Request canceled by user*"
+                self.markdown_formatter.format_markdown(buffer, updated_text)
+            else:
+                # If there was no response yet, just show the cancellation note
+                self.markdown_formatter.format_markdown(buffer, "*Request canceled by user*")
+            
+            # Remove the current buffer reference
+            del self.panels['current_response_buffer']
+    
     def on_send_clicked(self, widget):
         """Handle send button click or Enter key in query entry"""
         query = self.panels['query_entry'].get_text()
@@ -240,6 +328,11 @@ class AIPanelManager:
         
         # Clear the entry
         self.panels['query_entry'].set_text("")
+        
+        # Toggle buttons
+        if 'send_button' in self.panels and 'stop_button' in self.panels:
+            self.panels['send_button'].set_visible(False)
+            self.panels['stop_button'].set_visible(True)
         
         # Get terminal content for context
         terminal_content = self._get_terminal_content()
@@ -297,7 +390,7 @@ class AIPanelManager:
         # Start typing animation
         self._start_typing_animation(buffer)
         
-        # Scroll to bottom
+        # Schedule scrolling after the UI has been updated
         GLib.idle_add(self._scroll_to_bottom)
     
     def _start_typing_animation(self, buffer):
@@ -331,9 +424,35 @@ class AIPanelManager:
         print("Stream starting...")
     
     def _update_streaming_text(self, text):
-        """Update the streaming text in the UI"""
+        """Update the streaming text in the UI with rate limiting"""
         if not self.panels.get('stream_active', False):
             return
+            
+        # Store the latest text
+        self.pending_stream_text = text
+        
+        # If no update is scheduled, schedule one
+        if self.stream_update_timeout_id is None:
+            current_time = time.time() * 1000  # Convert to ms
+            elapsed = current_time - self.last_stream_update_time
+            
+            if elapsed >= self.stream_update_interval:
+                # Update immediately
+                self._apply_streaming_update()
+            else:
+                # Schedule update after the remaining interval
+                delay = max(1, int(self.stream_update_interval - elapsed))
+                self.stream_update_timeout_id = GLib.timeout_add(
+                    delay, self._apply_streaming_update)
+    
+    def _apply_streaming_update(self):
+        """Apply the pending streaming update to the UI"""
+        if self.stream_update_timeout_id:
+            GLib.source_remove(self.stream_update_timeout_id)
+            self.stream_update_timeout_id = None
+            
+        if not self.panels.get('stream_active', False) or self.pending_stream_text is None:
+            return False
             
         if 'current_response_buffer' in self.panels and self.panels['current_response_buffer']:
             # Stop typing animation if it's running
@@ -341,42 +460,51 @@ class AIPanelManager:
             
             # Update the buffer with the new text and apply markdown formatting
             buffer = self.panels['current_response_buffer']
-            self.markdown_formatter.format_markdown(buffer, text)
+            self.markdown_formatter.format_markdown(buffer, self.pending_stream_text)
             
-            # Scroll to bottom
-            GLib.idle_add(self._scroll_to_bottom)
+            # For streaming updates, use the delayed scroll method
+            # This will respect the auto_scroll_locked flag
+            self._delayed_scroll_to_bottom()
+            
+            # Update timestamp
+            self.last_stream_update_time = time.time() * 1000
+        
+        return False  # Don't repeat
+    
+    def _delayed_scroll_to_bottom(self):
+        """Schedule a scroll with debouncing for streaming updates"""
+        # Cancel any pending scroll
+        if self.scroll_timeout_id:
+            GLib.source_remove(self.scroll_timeout_id)
+            self.scroll_timeout_id = None
+        
+        # Schedule a new scroll with a short delay to let the UI update
+        self.scroll_timeout_id = GLib.timeout_add(30, lambda: GLib.idle_add(self._scroll_to_bottom))
     
     def _on_response_complete(self, response_text):
         """Handle the complete response from the API"""
-        # Remove streaming update callback if it was registered
-        if self.settings_manager.streaming_enabled:
-            self.api_handler.remove_update_callback(self._update_streaming_text)
-        
-        # Stop typing animation if it's running
-        self._stop_typing_animation()
-        
-        # Clear stream active flag
+        # If streaming was active, update the UI to reflect completion
         self.panels['stream_active'] = False
+
+        # Update the button state
+        self._update_button_state()
         
-        # If we're not streaming, add a new AI message
-        if not self.settings_manager.streaming_enabled:
-            self.add_ai_message(response_text)
-        else:
-            # If we are streaming, we've already been updating the text,
-            # but we need to make sure the final text is set
-            if 'current_response_buffer' in self.panels and self.panels['current_response_buffer']:
-                buffer = self.panels['current_response_buffer']
-                self.markdown_formatter.format_markdown(buffer, response_text)
+        # If for some reason the final update didn't apply (unlikely),
+        # make sure we have the full text
+        if 'current_response_buffer' in self.panels and self.panels['current_response_buffer']:
+            self.markdown_formatter.format_markdown(
+                self.panels['current_response_buffer'], 
+                response_text
+            )
+            
+            # For the final response content, ensure it's visible
+            # by temporarily unlocking auto-scrolling
+            if self.auto_scroll_locked:
+                # print("_on_response_complete: Auto-scroll was locked, unlocking for final content.")
+                self.auto_scroll_locked = False
                 
-                # Add to conversation history (we already have the UI element)
-                self.panels['conversation'].append({
-                    'type': 'ai-message',
-                    'text': response_text,
-                    'timestamp': time.strftime("%H:%M:%S")
-                })
-        
-        # Scroll to the new response
-        GLib.idle_add(self._scroll_to_bottom)
+            # Use delayed scrolling after completion too
+            self._delayed_scroll_to_bottom()
     
     def _get_terminal_content(self):
         """Get the current content of the terminal"""
@@ -416,74 +544,218 @@ class AIPanelManager:
             print(f"Error getting terminal content: {str(e)}")
             return f"Error retrieving terminal content: {str(e)}"
     
-    def add_message(self, text, message_type):
-        """Add a message to the conversation"""
-        # Create a message container
-        message_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
-        message_box.add_css_class(message_type)
-        
-        # Add timestamp
-        timestamp = time.strftime("%H:%M:%S")
-        timestamp_label = Gtk.Label.new(timestamp)
-        timestamp_label.set_halign(Gtk.Align.END)
-        timestamp_label.add_css_class("timestamp")
-        message_box.append(timestamp_label)
-        
-        # Create a text view for the message content
-        text_view = Gtk.TextView()
-        text_view.set_editable(False)
-        text_view.set_cursor_visible(False)
-        text_view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
-        
-        # Add the text to the buffer
-        buffer = text_view.get_buffer()
-        
-        # Apply markdown formatting if it's an AI message
-        if message_type == "ai-message":
-            self.markdown_formatter.format_markdown(buffer, text)
+    def add_message(self, role, text, animate=False, bold=False):
+        """Add a message to the chat panel"""
+        if 'chat_box' not in self.panels:
+            return False
+
+        if role not in ('user', 'assistant', 'system', 'error'):
+            logger.error(f"Invalid role: {role}")
+            return False
+
+        # For new complete messages (not streaming updates), we want to ensure they're visible
+        # by temporarily unlocking auto-scrolling
+        if self.auto_scroll_locked:
+            # print(f"add_message (role: {role}): Auto-scroll was locked, unlocking for new message.")
+            self.auto_scroll_locked = False
+
+        # Create message widget
+        message_container = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        message_container.set_name(f"{role}-message-container")
+        self.panels['chat_box'].append(message_container)
+
+        # Add header with role
+        header = Gtk.Label(label=role.capitalize())
+        header.set_halign(Gtk.Align.START)
+        header.set_name(f"{role}-header")
+        if bold:
+            header.set_markup(f"<b>{role.capitalize()}</b>")
+        message_container.append(header)
+
+        # Create TextView and TextBuffer for the message content
+        content_view = Gtk.TextView()
+        content_view.set_name(f"{role}-content")
+        content_view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+        content_view.set_editable(False)
+        content_view.set_cursor_visible(False)
+        content_view.set_left_margin(10)
+        content_view.set_right_margin(10)
+        content_view.set_top_margin(5)
+        content_view.set_bottom_margin(5)
+
+        # Create and configure buffer
+        content_buffer = content_view.get_buffer()
+
+        # Apply markdown formatting if it's not a user message
+        if role != 'user':
+            # Add special typing indicator if animation is requested
+            if animate:
+                content_buffer.set_text("▋")  # Typing indicator
+                self.panels['typing_view'] = content_view
+                self.panels['typing_buffer'] = content_buffer
+                self.panels['current_response_text'] = ""
+                self.panels['current_response_buffer'] = content_buffer
+                self._start_typing_animation()
+            else:
+                # Apply markdown formatting
+                self.markdown_formatter.format_markdown(content_buffer, text)
         else:
-            # For user and system messages, just set the plain text
-            buffer.set_text(text)
+            # Simple text for user messages
+            content_buffer.set_text(text)
+
+        message_container.append(content_view)
+
+        # Scroll to the bottom
+        self._delayed_scroll_to_bottom()
         
-        message_box.append(text_view)
-        
-        # Add to chat box
-        self.panels['chat_box'].append(message_box)
-        
-        # Store in conversation history
-        self.panels['conversation'].append({
-            'type': message_type,
-            'text': text,
-            'timestamp': timestamp
-        })
-        
-        # Scroll to bottom - this is a workaround for GTK4
-        GLib.idle_add(self._scroll_to_bottom)
-    
+        return True
+
     def _scroll_to_bottom(self):
-        """Scroll the chat view to the bottom"""
-        # In GTK4, we need a different approach to scroll to bottom
-        chat_box = self.panels['chat_box']
-        last_child = None
-        
-        # Find the last child
-        child = chat_box.get_first_child()
-        while child:
-            last_child = child
-            child = child.get_next_sibling()
-        
-        # Focus on the last child to scroll to it
-        if last_child:
-            last_child.grab_focus()
+        """Scroll the chat view to the bottom if auto-scroll is not locked."""
+        chat_scroll = self.panels.get('chat_scroll')
+        if not chat_scroll or not isinstance(chat_scroll, Gtk.ScrolledWindow):
+            return GLib.SOURCE_REMOVE
+
+        # Get the adjustment
+        vadj = chat_scroll.get_vadjustment()
+        if not vadj:
+            return GLib.SOURCE_REMOVE
+
+        # Check if user has scrolled up and locked auto-scrolling
+        if self.auto_scroll_locked:
+            # Before bailing, check if we are already at the bottom (e.g., content shrunk)
+            is_at_bottom_threshold = 5
+            is_at_bottom = vadj.get_value() >= (vadj.get_upper() - vadj.get_page_size() - is_at_bottom_threshold)
+            if is_at_bottom:
+                # If we're already at the bottom, unlock auto-scroll
+                # print("_scroll_to_bottom: View is at bottom despite lock, unlocking.")
+                self.auto_scroll_locked = False
+            else:
+                # print("_scroll_to_bottom: Auto-scroll locked and not at bottom. Skipping scroll.")
+                return GLib.SOURCE_REMOVE  # Skip scrolling when locked and not at bottom
+
+        # Set the programmatic scroll flag to prevent _on_vadj_changed from responding
+        self.is_programmatic_scroll = True
+        try:
+            # Calculate the target position (maximum scroll position)
+            target_value = max(vadj.get_lower(), vadj.get_upper() - vadj.get_page_size())
+            
+            # Make sure we don't go below the minimum value
+            if target_value < vadj.get_lower():
+                target_value = vadj.get_lower()
+                
+            # Set the scroll position
+            vadj.set_value(target_value)
+        finally:
+            # Always reset the programmatic scroll flag
+            self.is_programmatic_scroll = False
+            
+        # Return GLib.SOURCE_REMOVE when used with idle_add
+        # This ensures the function runs only once per scheduled call
+        return GLib.SOURCE_REMOVE
     
     def add_system_message(self, text):
         """Add a system message to the conversation"""
-        self.add_message(text, "system-message")
+        self.add_message('system', text)
     
     def add_user_message(self, text):
         """Add a user message to the conversation"""
-        self.add_message(text, "user-message")
+        self.add_message('user', text)
     
     def add_ai_message(self, text):
         """Add an AI message to the conversation"""
-        self.add_message(text, "ai-message") 
+        self.add_message('assistant', text)
+
+    def add_error_message(self, text):
+        """Add an error message to the conversation"""
+        self.add_message('error', text)
+
+    def _update_button_state(self):
+        """Update the button state based on the current streaming state"""
+        if self.panels.get('stream_active', False):
+            self.panels['send_button'].set_visible(False)
+            self.panels['stop_button'].set_visible(True)
+        else:
+            self.panels['send_button'].set_visible(True)
+            self.panels['stop_button'].set_visible(False)
+
+    def process_input(self):
+        """Process the input from the entry field"""
+        if 'input_field' not in self.panels:
+            return
+            
+        # Get the text from the input field
+        buffer = self.panels['input_field'].get_buffer()
+        start_iter = buffer.get_start_iter()
+        end_iter = buffer.get_end_iter()
+        text = buffer.get_text(start_iter, end_iter, False).strip()
+        
+        if not text:
+            return
+            
+        # Clear the input field
+        buffer.set_text("")
+        
+        # Add user message to the conversation
+        self.add_user_message(text)
+        
+        # Update button state
+        self.panels['stream_active'] = True
+        self._update_button_state()
+        
+        # Add a placeholder for the AI response with typing animation
+        self.add_message('assistant', "", animate=True)
+        
+        # Get terminal content to include in the prompt
+        terminal_content = self._get_terminal_content()
+        
+        # Send to API handler
+        self.api_handler.send_request(
+            text, 
+            terminal_content,
+            self._update_streaming_text,
+            self._on_response_complete,
+            self._on_api_error
+        )
+
+    def _on_api_error(self, error_message):
+        """Handle API errors"""
+        # Stop typing animation if it's running
+        self._stop_typing_animation()
+        
+        # Clear stream active flag
+        self.panels['stream_active'] = False
+        
+        # Update button state
+        self._update_button_state()
+        
+        # Remove any pending streaming response
+        if 'current_response_buffer' in self.panels:
+            del self.panels['current_response_buffer']
+        
+        # Add error message
+        self.add_error_message(f"API Error: {error_message}")
+
+    def _on_vadj_changed(self, vadj):
+        """Handle scroll position changes to manage auto_scroll_locked."""
+        if self.is_programmatic_scroll:
+            # This change was due to our own _scroll_to_bottom.
+            # Programmatic scrolls are intended to go to the bottom, so unlock auto-scroll.
+            if self.auto_scroll_locked:
+                # print("_on_vadj_changed: Programmatic scroll; ensuring auto_scroll_locked is False.")
+                self.auto_scroll_locked = False
+            return  # Do not proceed to user scroll logic
+
+        # User scroll or other GTK-internal change
+        is_at_bottom_threshold = 5  # Small pixel threshold to consider "at bottom"
+        # Check if scrollbar is at or very near the bottom
+        is_at_bottom = vadj.get_value() >= (vadj.get_upper() - vadj.get_page_size() - is_at_bottom_threshold)
+
+        if not is_at_bottom:
+            if not self.auto_scroll_locked:  # Lock only if it wasn't already
+                # print("User scrolled up. Auto-scroll locked.")
+                self.auto_scroll_locked = True
+        else:  # User is at or scrolled to the bottom
+            if self.auto_scroll_locked:  # Unlock only if it was locked
+                # print("User is at/scrolled to bottom. Auto-scroll unlocked.")
+                self.auto_scroll_locked = False 
