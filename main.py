@@ -13,8 +13,28 @@ class TerminalWindow(Gtk.ApplicationWindow):
         self.set_default_size(600, 400)
         self.set_title("KIterm")
 
+        # Create a horizontal paned container
+        self.paned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL)
+        self.set_child(self.paned)
+
+        # Terminal setup
         self.terminal = Vte.Terminal()
-        self.set_child(self.terminal)
+        self.paned.set_start_child(self.terminal)
+        self.paned.set_resize_start_child(True)
+        
+        # Create the AI Chat panel
+        self.chat_panel = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.chat_label = Gtk.Label(label="AI Chat")
+        self.chat_label.set_margin_top(10)
+        self.chat_label.set_margin_bottom(10)
+        self.chat_panel.append(self.chat_label)
+        
+        # Add the chat panel to the paned container
+        self.paned.set_end_child(self.chat_panel)
+        self.paned.set_resize_end_child(True)
+        
+        # Set the initial position (70% for terminal, 30% for chat panel)
+        self.paned.set_position(420)
 
         # Configure the terminal
         self.terminal.set_font_scale(1.0)
