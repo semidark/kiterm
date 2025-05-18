@@ -4,6 +4,9 @@ import os
 import time
 from gi.repository import Gtk, GLib, Pango, Gdk, Vte
 
+from api_handler import APIHandler
+from markdown_formatter import MarkdownFormatter
+
 class AIPanelManager:
     """Manages the AI Chat panel in KIterm"""
     
@@ -13,6 +16,12 @@ class AIPanelManager:
         self.settings_manager = settings_manager
         self.panels = {}
         self.parent_window = None
+        
+        # Create API handler
+        self.api_handler = APIHandler(settings_manager)
+        
+        # Create markdown formatter
+        self.markdown_formatter = MarkdownFormatter()
         
         # Add CSS provider for custom styling
         self._add_css_styling()
@@ -235,10 +244,139 @@ class AIPanelManager:
         # Get terminal content for context
         terminal_content = self._get_terminal_content()
         
-        # For now, just simulate a response
-        # Later we'll implement real API calls with the settings
-        api_info = f"API URL: {self.settings_manager.api_url}\nModel: {self.settings_manager.model}\nStreaming: {self.settings_manager.streaming_enabled}"
-        self.add_ai_message(f"This is a simulated response to: '{query}'\n\nYour terminal currently contains:\n```\n{terminal_content[:100]}...\n```\n\nSettings:\n{api_info}")
+        # Prepare for streaming if enabled
+        if self.settings_manager.streaming_enabled:
+            self._prepare_for_streaming()
+        
+        # Send query to API handler
+        self.api_handler.send_query(
+            query=query,
+            terminal_content=terminal_content,
+            on_complete=self._on_response_complete,
+            on_stream_start=self._on_stream_start if self.settings_manager.streaming_enabled else None
+        )
+        
+        # Register for streaming updates if enabled
+        if self.settings_manager.streaming_enabled:
+            self.api_handler.register_update_callback(self._update_streaming_text)
+    
+    def _prepare_for_streaming(self):
+        """Prepare for streaming response"""
+        # Create empty AI message box that will be updated during streaming
+        message_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        message_box.add_css_class("ai-message")
+        
+        # Add timestamp
+        timestamp = time.strftime("%H:%M:%S")
+        timestamp_label = Gtk.Label.new(timestamp)
+        timestamp_label.set_halign(Gtk.Align.END)
+        timestamp_label.add_css_class("timestamp")
+        message_box.append(timestamp_label)
+        
+        # Create a text view for the message content
+        text_view = Gtk.TextView()
+        text_view.set_editable(False)
+        text_view.set_cursor_visible(False)
+        text_view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+        
+        # Add typing indicator 
+        buffer = text_view.get_buffer()
+        buffer.set_text("Thinking...")
+        
+        message_box.append(text_view)
+        
+        # Add to chat box
+        self.panels['chat_box'].append(message_box)
+        
+        # Store reference to this message for streaming updates
+        self.panels['current_response_box'] = message_box
+        self.panels['current_response_buffer'] = buffer
+        self.panels['current_text_view'] = text_view
+        self.panels['stream_active'] = True
+        
+        # Start typing animation
+        self._start_typing_animation(buffer)
+        
+        # Scroll to bottom
+        GLib.idle_add(self._scroll_to_bottom)
+    
+    def _start_typing_animation(self, buffer):
+        """Start the typing indicator animation"""
+        self.panels['typing_animation_active'] = True
+        self.panels['typing_indicator_pos'] = 0
+        
+        def update_indicator():
+            if not self.panels.get('typing_animation_active', False):
+                return False  # Stop the animation
+                
+            indicators = ["Thinking.", "Thinking..", "Thinking..."]
+            pos = self.panels['typing_indicator_pos']
+            buffer.set_text(indicators[pos])
+            
+            self.panels['typing_indicator_pos'] = (pos + 1) % len(indicators)
+            return True  # Continue the animation
+        
+        # Run animation every 500ms
+        self.panels['typing_animation_id'] = GLib.timeout_add(500, update_indicator)
+    
+    def _stop_typing_animation(self):
+        """Stop the typing indicator animation"""
+        self.panels['typing_animation_active'] = False
+        if 'typing_animation_id' in self.panels and self.panels['typing_animation_id']:
+            GLib.source_remove(self.panels['typing_animation_id'])
+            self.panels['typing_animation_id'] = None
+    
+    def _on_stream_start(self):
+        """Handle stream start event"""
+        print("Stream starting...")
+    
+    def _update_streaming_text(self, text):
+        """Update the streaming text in the UI"""
+        if not self.panels.get('stream_active', False):
+            return
+            
+        if 'current_response_buffer' in self.panels and self.panels['current_response_buffer']:
+            # Stop typing animation if it's running
+            self._stop_typing_animation()
+            
+            # Update the buffer with the new text and apply markdown formatting
+            buffer = self.panels['current_response_buffer']
+            self.markdown_formatter.format_markdown(buffer, text)
+            
+            # Scroll to bottom
+            GLib.idle_add(self._scroll_to_bottom)
+    
+    def _on_response_complete(self, response_text):
+        """Handle the complete response from the API"""
+        # Remove streaming update callback if it was registered
+        if self.settings_manager.streaming_enabled:
+            self.api_handler.remove_update_callback(self._update_streaming_text)
+        
+        # Stop typing animation if it's running
+        self._stop_typing_animation()
+        
+        # Clear stream active flag
+        self.panels['stream_active'] = False
+        
+        # If we're not streaming, add a new AI message
+        if not self.settings_manager.streaming_enabled:
+            self.add_ai_message(response_text)
+        else:
+            # If we are streaming, we've already been updating the text,
+            # but we need to make sure the final text is set
+            if 'current_response_buffer' in self.panels and self.panels['current_response_buffer']:
+                buffer = self.panels['current_response_buffer']
+                self.markdown_formatter.format_markdown(buffer, response_text)
+                
+                # Add to conversation history (we already have the UI element)
+                self.panels['conversation'].append({
+                    'type': 'ai-message',
+                    'text': response_text,
+                    'timestamp': time.strftime("%H:%M:%S")
+                })
+        
+        # Scroll to the new response
+        GLib.idle_add(self._scroll_to_bottom)
     
     def _get_terminal_content(self):
         """Get the current content of the terminal"""
@@ -299,7 +437,13 @@ class AIPanelManager:
         
         # Add the text to the buffer
         buffer = text_view.get_buffer()
-        buffer.set_text(text)
+        
+        # Apply markdown formatting if it's an AI message
+        if message_type == "ai-message":
+            self.markdown_formatter.format_markdown(buffer, text)
+        else:
+            # For user and system messages, just set the plain text
+            buffer.set_text(text)
         
         message_box.append(text_view)
         
