@@ -39,12 +39,11 @@ Based on the POC code and the current state of the application, here's a plan to
    - [X] Improved code block interaction (copy, execute, save)
    - [X] Optimize LLM Prompt so it aligns better with the task of an Shell AI-Assistent
 
-2. **UI Improvements**
-   - [ ] Add loading indicators during API calls
-
-3. **Terminal Integration**
-   - [ ] Refine terminal content extraction
+2. **Terminal Integration**
+   - [X] Refine terminal content extraction
    - [ ] Add context management
+   - [ ] Refine Copy and Paste functionality (ctrl+shift+c and ctrl+shift+v)
+   - [ ] Add Scrollbars to Terminal
    
 ### Phase 3: Advanced Features
 1. **Conversation Management**
