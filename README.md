@@ -37,17 +37,14 @@ Based on the POC code and the current state of the application, here's a plan to
 ### Phase 2: Enhanced Chat Experience
 1. **Markdown Formatting**
    - [X] Create a markdown renderer based on POC's markdown.py
+   - [X] Improved code block interaction (copy, execute, save)
    - [ ] Optimize LLM Prompt so it aligns better with the task Shell assistent
-   - [ ] Improved code block interaction (copy, execute, save)
-
 
 2. **UI Improvements**
    - [ ] Add loading indicators during API calls
 
 3. **Terminal Integration**
    - [ ] Refine terminal content extraction
-   - [ ] Enable code execution directly from chat
-   - [ ] Improved code block interaction (copy to clipboard)
    - [ ] Add context management
    
 ### Phase 3: Advanced Features

@@ -1010,21 +1010,14 @@ class AIPanelManager:
                 
             GLib.timeout_add(800, restore_icon)
             
-            # Send the code to the terminal
-            terminal_feed_binary = isinstance(self.terminal.feed_child, type(lambda: None))
-            
             # Add a newline at the end if not present
             if not code.endswith('\n'):
                 code += '\n'
                 
             try:
-                if terminal_feed_binary:
-                    # For newer VTE versions that expect bytes
-                    self.terminal.feed_child(code.encode())
-                else:
-                    # For older VTE versions
-                    self.terminal.feed_child(code, len(code))
-                
+                # Convert the string to a list of integer code points
+                code_ints = [ord(c) for c in code]
+                self.terminal.feed_child(code_ints)
                 self._show_notification("Code executed in terminal")
             except Exception as e:
                 self._show_notification(f"Error executing code: {str(e)}")
