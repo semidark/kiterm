@@ -20,7 +20,6 @@ A Python application that displays a terminal using GTK4 and VTE, now featuring 
     *   Terminal preview within the AI panel.
     *   Conversation clearing and settings refresh options.
 
-
 ## Implementation Plan
 
 Based on the POC code and the current state of the application, here's a plan to implement the API calls and enhance the chat functionality:
@@ -38,7 +37,7 @@ Based on the POC code and the current state of the application, here's a plan to
 1. **Markdown Formatting**
    - [X] Create a markdown renderer based on POC's markdown.py
    - [X] Improved code block interaction (copy, execute, save)
-   - [ ] Optimize LLM Prompt so it aligns better with the task Shell assistent
+   - [X] Optimize LLM Prompt so it aligns better with the task of an Shell AI-Assistent
 
 2. **UI Improvements**
    - [ ] Add loading indicators during API calls
