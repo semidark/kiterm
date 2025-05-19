@@ -7,7 +7,7 @@ import sys
 import os
 
 # Import our modules
-from ai_panel import AIPanelManager
+from ai_panel_controller import AIPanelController
 from settings_manager import SettingsManager
 
 class TerminalWindow(Gtk.ApplicationWindow):
@@ -43,9 +43,9 @@ class TerminalWindow(Gtk.ApplicationWindow):
         self.paned.set_start_child(self.scrolled_window)
         self.paned.set_resize_start_child(True)
         
-        # Create the AI Chat panel using our panel manager with settings
-        self.ai_panel_manager = AIPanelManager(self.terminal, self.settings_manager)
-        self.chat_panel = self.ai_panel_manager.create_panel()
+        # Create the AI Chat panel using our panel controller with settings
+        self.ai_panel_controller = AIPanelController(self.terminal, self.settings_manager)
+        self.chat_panel = self.ai_panel_controller.create_panel()
         
         # Add the chat panel to the paned container
         self.paned.set_end_child(self.chat_panel)
@@ -194,14 +194,14 @@ class TerminalWindow(Gtk.ApplicationWindow):
             self.terminal.set_font_scale(settings_scale)
 
     # TODO: Find out why the callback parameters are so weird
-    def on_spawn_finished(self, terminal, pid, error, user_data):
+    def on_spawn_finished(self, terminal, pid, error, user_data=None):
         print(f"on_spawn_finished called:")
         # print(f"  self: {self}")
         # print(f"  terminal: {terminal}")
         print(f"  pid: {pid}")
         print(f"  error: {error}")
-        print(f"  user_data: {user_data}")
-
+        if user_data is not None:
+            print(f"  user_data: {user_data}")
 
     def on_child_exited(self, terminal, exit_status):
         print(f"Terminal child exited with status: {exit_status}")
