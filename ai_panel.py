@@ -737,12 +737,12 @@ class AIPanelManager:
                         if i+1 < len(positions):
                             block_ranges.append((positions[i], positions[i+1]+3))  # +3 to include the closing ```
                     
-                    # Sort ranges by start position (to ensure we replace from end to start)
+                    # Sort ranges by start position (to ensure we replace from start to end)
                     block_ranges.sort(reverse=True)
                     
                     # Replace blocks with placeholders (work backwards to avoid index shifting)
                     for i, (start, end) in enumerate(block_ranges):
-                        placeholder = f"__CODE_BLOCK_{i}__"
+                        placeholder = f"__CODE_BLOCK_{len(block_ranges)-1-i}__"  # Reverse the index to preserve original order
                         block_content = processed_text[start:end]
                             
                         # Replace this specific block with the placeholder
@@ -750,7 +750,7 @@ class AIPanelManager:
                         
                         # Use the extracted language and code from our manual parsing
                         if i < len(code_blocks):
-                            lang, code = code_blocks[i]
+                            lang, code = code_blocks[len(code_blocks)-1-i]  # Use reversed index here too to match placeholder order
                             placeholder_map[placeholder] = (lang, code)
                         else:
                             # Fallback if something went wrong with our counting
