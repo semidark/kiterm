@@ -33,15 +33,13 @@ Based on the POC code and the current state of the application, here's a plan to
 
 2. **Connect Settings to API**
    - [X] Ensure settings are properly passed to the API handler
-   - [ ] Handle API key securely
-   - [ ] Implement model selection
 
 ### Phase 2: Enhanced Chat Experience
 1. **Markdown Formatting**
    - [X] Create a markdown renderer based on POC's markdown.py
+   - [ ] Optimize LLM Prompt so it aligns better with the task Shell assistent
    - [ ] Improved code block interaction (copy, execute, save)
-   - [ ] Improve code block rendering with syntax highlighting
-   - [ ] Add support for clickable links
+
 
 2. **UI Improvements**
    - [ ] Add loading indicators during API calls
@@ -55,9 +53,12 @@ Based on the POC code and the current state of the application, here's a plan to
 ### Phase 3: Advanced Features
 1. **Conversation Management**
    - [ ] Save/load conversation history
+   - [ ] Improve code block rendering with syntax highlighting
    - [ ] Export conversations
    - [ ] Add keyboard shortcuts
-   - [ ] Select from Multiple Models
+   - [ ] Implement model selection
+   - [ ] Handle API key securely
+   - [ ] Add support for clickable links
 
 ## Prerequisites
 
