@@ -1,6 +1,24 @@
-# GTK4 VTE Terminal Application
+# KIterm: GTK4 VTE Terminal with Integrated AI Assistant
 
-A simple Python application that displays a terminal using GTK4 and VTE.
+A Python application that displays a terminal using GTK4 and VTE, now featuring an integrated AI assistant panel.
+
+## Features
+
+*   **Embedded VTE Terminal**: A fully functional terminal embedded within the GTK4 application.
+*   **Integrated AI Chat Panel**:
+    *   Connects to Ollama, OpenAI, or other compatible Large Language Model (LLM) APIs.
+    *   Provides contextual assistance by using the current content of your terminal.
+    *   Supports streaming responses for real-time interaction.
+    *   Renders AI responses in Markdown for clear formatting (including code blocks, bold, italics, etc.).
+    *   In-app settings panel to configure:
+        *   API Endpoint URL.
+        *   Model name.
+        *   Streaming mode (enable/disable).
+        *   AI panel width.
+    *   Cancellable AI requests via a "Stop" button or the Escape key.
+    *   Intelligent auto-scrolling that respects manual scrolling in the chat view.
+    *   Terminal preview within the AI panel.
+    *   Conversation clearing and settings refresh options.
 
 ## Prerequisites
 
@@ -10,15 +28,16 @@ Before running this application, you need to have GTK4 and the VTE library devel
 
 ```bash
 sudo apt update
-sudo apt install -y libgtk-4-dev libvte-2.91-gtk4-dev libgirepository2.0-dev
+sudo apt install -y libgtk-4-dev libvte-2.91-gtk4-dev gir1.2-vte-3.0 # Ensure correct VTE GIR package for GTK4
+# libgirepository1.0-dev is also generally useful for PyGObject development
+sudo apt install -y libgirepository1.0-dev
 ```
 
-
-(Note: Package names might vary slightly depending on the distribution version.)
+(Note: Package names might vary slightly depending on the distribution version. `gir1.2-vte-3.0` is typical for VTE with GTK4.)
 
 ## Setup
 
-1.  **Clone the repository (if applicable) or create the files `main.py` and `requirements.txt` as provided.**
+1.  **Clone the repository (if applicable) or ensure all project files are in place.**
 
 2.  **Create a Python virtual environment (recommended):**
     ```bash
@@ -43,4 +62,14 @@ sudo apt install -y libgtk-4-dev libvte-2.91-gtk4-dev libgirepository2.0-dev
     python3 main.py
     ```
 
-This will open a window with an embedded terminal. 
+This will open a window with an embedded terminal and the AI assistant panel.
+
+### Configuring the AI Assistant
+
+*   Upon first launch, or if the AI assistant isn't working, click the **settings icon (gear)** in the AI Chat panel.
+*   **API URL**:
+    *   For local Ollama: `http://localhost:11434` (the application will auto-append `/v1/chat/completions`).
+    *   For OpenAI: `https://api.openai.com/v1/chat/completions`.
+*   **Model**: Enter the name of the model you wish to use (e.g., `llama3`, `gpt-4o`, `qwen2.5-coder:32b`).
+*   **API Key**: Required for services like OpenAI.
+*   Adjust other settings like streaming and panel width as needed. 
