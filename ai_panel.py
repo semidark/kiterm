@@ -801,14 +801,50 @@ class AIPanelManager:
                         
                         if nl_pos > 0:
                             # There's a newline - language might be before it
-                            lang = code_segment[:nl_pos].strip()
-                            code = code_segment[nl_pos+1:]
+                            first_line = code_segment[:nl_pos].strip()
+                            rest_of_code = code_segment[nl_pos+1:]
+                            
+                            # List of common language/shell identifiers
+                            known_languages = [
+                                'bash', 'sh', 'shell', 'zsh', 'fish', 
+                                'python', 'py', 'python3',
+                                'javascript', 'js', 'typescript', 'ts',
+                                'java', 'c', 'cpp', 'c++', 'cs', 'c#',
+                                'go', 'rust', 'ruby', 'perl', 'php',
+                                'sql', 'html', 'css', 'xml', 'json',
+                                'yaml', 'ini', 'toml', 'conf',
+                                'makefile', 'dockerfile'
+                            ]
+                            
+                            # Check if the first line is just a language identifier
+                            if first_line.lower() in known_languages or first_line.startswith('language-'):
+                                lang = first_line
+                                code = rest_of_code
+                            else:
+                                # If first line doesn't look like a language identifier,
+                                # it's probably part of the code - include whole segment as code
+                                lang = ""
+                                code = code_segment
                         else:
                             # No newline - check if there's a space to separate language
                             space_pos = code_segment.find(' ')
                             if space_pos > 0 and space_pos < 20:  # Language ID shouldn't be too long
-                                lang = code_segment[:space_pos].strip()
-                                code = code_segment[space_pos+1:]
+                                lang_candidate = code_segment[:space_pos].strip().lower()
+                                # Only treat as language if it's in our known languages list
+                                if lang_candidate in ['bash', 'sh', 'shell', 'zsh', 'fish', 
+                                                     'python', 'py', 'python3',
+                                                     'javascript', 'js', 'typescript', 'ts',
+                                                     'java', 'c', 'cpp', 'c++', 'cs', 'c#',
+                                                     'go', 'rust', 'ruby', 'perl', 'php',
+                                                     'sql', 'html', 'css', 'xml', 'json',
+                                                     'yaml', 'ini', 'toml', 'conf',
+                                                     'makefile', 'dockerfile']:
+                                    lang = lang_candidate
+                                    code = code_segment[space_pos+1:]
+                                else:
+                                    # Not a recognized language, treat whole segment as code
+                                    lang = ""
+                                    code = code_segment
                             else:
                                 # No clear language separator, treat whole segment as code
                                 lang = ""
