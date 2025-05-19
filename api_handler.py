@@ -20,6 +20,8 @@ class APIHandler:
         self.settings_manager = settings_manager
         self.update_callbacks = []
         self.active_request = None
+        self.active_connection = None  # Store the active HTTP connection
+        self.cancel_event = threading.Event()  # Event for signaling cancellation
         self.request_timeout = 60  # Default timeout in seconds
     
     def register_update_callback(self, callback):
@@ -34,26 +36,62 @@ class APIHandler:
     
     def cancel_active_request(self):
         """Cancel any active request"""
-        if self.active_request and not self.active_request.done():
+        if self.active_request and self.active_request.is_alive():
             print("Cancelling active API request")
-            self.active_request.cancel()
+            self.cancel_event.set()  # Signal the thread to stop
+            
+            # Close the active connection to force the request to terminate
+            if self.active_connection:
+                try:
+                    print("Closing active connection")
+                    self.active_connection.close()
+                except Exception as e:
+                    print(f"Error closing connection: {e}")
+            
             return True
         return False
     
-    def send_query(self, query, terminal_content, on_complete, on_stream_start=None):
-        """Send a query to the LLM API"""
+    def send_request(self, query, terminal_content, update_callback, complete_callback, error_callback):
+        """Send a request to the API with callbacks for streaming updates and completion"""
+        # Register the update callback
+        self.register_update_callback(update_callback)
+        
         # Cancel any existing request
         self.cancel_active_request()
+        
+        # Reset the cancel event for the new request
+        self.cancel_event.clear()
+        
+        # Define a wrapper for the completion callback that cleans up
+        def completion_wrapper(response_text):
+            # Remove the update callback
+            self.remove_update_callback(update_callback)
+            
+            # Call the original callback
+            complete_callback(response_text)
+        
+        # Define an error wrapper
+        def error_wrapper(error_message):
+            # Remove the update callback
+            self.remove_update_callback(update_callback)
+            
+            # Call the original error callback
+            error_callback(error_message)
         
         # Start a thread to not block the UI
         thread = threading.Thread(
             target=self._send_query_thread,
-            args=(query, terminal_content, on_complete, on_stream_start)
+            args=(query, terminal_content, completion_wrapper, self._on_stream_start, error_wrapper)
         )
         thread.daemon = True  # Make thread daemon so it doesn't block app exit
+        self.active_request = thread
         thread.start()
     
-    def _send_query_thread(self, query, terminal_content, on_complete, on_stream_start):
+    def _on_stream_start(self):
+        """Handle stream start"""
+        print("Stream starting...")
+    
+    def _send_query_thread(self, query, terminal_content, on_complete, on_stream_start=None, on_error=None):
         """Handle the query in a background thread"""
         try:
             # Get current settings
@@ -136,15 +174,33 @@ class APIHandler:
                 if parsed_url.query:
                     path = f"{path}?{parsed_url.query}"
                 
+                # Create a connection to be shared across the whole function
+                conn = None
+                
                 try:
+                    # Check if request has been cancelled
+                    if self.cancel_event.is_set():
+                        print("Request cancelled before connection established")
+                        GLib.idle_add(on_complete, "Request cancelled")
+                        return
+                    
                     # Create the appropriate connection based on HTTP or HTTPS
                     if is_https:
                         conn = http.client.HTTPSConnection(host, timeout=self.request_timeout)
                     else:
                         conn = http.client.HTTPConnection(host, timeout=self.request_timeout)
                     
+                    # Store the connection for potential cancellation
+                    self.active_connection = conn
+                    
                     # Send the request
                     conn.request('POST', path, body=json_data, headers=headers)
+                    
+                    # Check again if cancelled after sending request but before getting response
+                    if self.cancel_event.is_set():
+                        print("Request cancelled after sending but before receiving response")
+                        GLib.idle_add(on_complete, "Request cancelled")
+                        return
                     
                     # Get the response and process the stream
                     response = conn.getresponse()
@@ -153,7 +209,16 @@ class APIHandler:
                         # Handle error
                         error_data = response.read().decode('utf-8')
                         error_msg = self._format_api_error(response.status, response.reason, api_url, error_data)
-                        GLib.idle_add(on_complete, error_msg)
+                        if on_error:
+                            GLib.idle_add(on_error, error_msg)
+                        else:
+                            GLib.idle_add(on_complete, error_msg)
+                        return
+                    
+                    # Check one more time for cancellation before processing response
+                    if self.cancel_event.is_set():
+                        print("Request cancelled just before processing response")
+                        GLib.idle_add(on_complete, "Request cancelled")
                         return
                     
                     # Process the streaming response
@@ -161,23 +226,58 @@ class APIHandler:
                     
                 except socket.timeout:
                     error_msg = f"Request timed out after {self.request_timeout} seconds.\nURL: {api_url}"
-                    GLib.idle_add(on_complete, error_msg)
+                    if on_error:
+                        GLib.idle_add(on_error, error_msg)
+                    else:
+                        GLib.idle_add(on_complete, error_msg)
                 except socket.error as e:
-                    error_msg = f"Socket Error: {str(e)}\nURL: {api_url}"
-                    GLib.idle_add(on_complete, error_msg)
+                    if self.cancel_event.is_set():
+                        print(f"Socket error likely due to cancellation: {e}")
+                        GLib.idle_add(on_complete, "Request cancelled")
+                    else:
+                        error_msg = f"Socket Error: {str(e)}\nURL: {api_url}"
+                        if on_error:
+                            GLib.idle_add(on_error, error_msg)
+                        else:
+                            GLib.idle_add(on_complete, error_msg)
                 except Exception as e:
-                    error_msg = f"Streaming Error: {str(e)}\nURL: {api_url}"
-                    GLib.idle_add(on_complete, error_msg)
+                    if self.cancel_event.is_set():
+                        print(f"Exception likely due to cancellation: {e}")
+                        GLib.idle_add(on_complete, "Request cancelled")
+                    else:
+                        error_msg = f"Streaming Error: {str(e)}\nURL: {api_url}"
+                        if on_error:
+                            GLib.idle_add(on_error, error_msg)
+                        else:
+                            GLib.idle_add(on_complete, error_msg)
                 finally:
-                    conn.close()
+                    # Clean up resources
+                    if conn:
+                        try:
+                            conn.close()
+                        except:
+                            pass
+                    self.active_connection = None
             else:
                 # Use non-streaming mode
                 try:
+                    # Check if cancelled before sending request
+                    if self.cancel_event.is_set():
+                        print("Non-streaming request cancelled before sending")
+                        GLib.idle_add(on_complete, "Request cancelled")
+                        return
+                        
                     # Create request with timeout
                     req = urllib.request.Request(api_url, data=json_data, headers=headers, method='POST')
                     
                     # Send the request with timeout
                     with urllib.request.urlopen(req, timeout=self.request_timeout) as response:
+                        # Check if cancelled after sending but before processing response
+                        if self.cancel_event.is_set():
+                            print("Non-streaming request cancelled after sending")
+                            GLib.idle_add(on_complete, "Request cancelled")
+                            return
+                            
                         response_data = json.loads(response.read().decode('utf-8'))
                         
                         # Extract the response text
@@ -191,31 +291,62 @@ class APIHandler:
                     
                 except urllib.error.HTTPError as e:
                     error_msg = self._format_http_error(e, api_url, json_data)
-                    GLib.idle_add(on_complete, error_msg)
+                    if on_error:
+                        GLib.idle_add(on_error, error_msg)
+                    else:
+                        GLib.idle_add(on_complete, error_msg)
                 except urllib.error.URLError as e:
                     if isinstance(e.reason, socket.timeout):
                         error_msg = f"Request timed out after {self.request_timeout} seconds.\nURL: {api_url}"
                     else:
                         error_msg = f"API Connection Error: {str(e.reason)}\nURL: {api_url}"
-                    GLib.idle_add(on_complete, error_msg)
+                    if on_error:
+                        GLib.idle_add(on_error, error_msg)
+                    else:
+                        GLib.idle_add(on_complete, error_msg)
                 except socket.timeout:
                     error_msg = f"Request timed out after {self.request_timeout} seconds.\nURL: {api_url}"
-                    GLib.idle_add(on_complete, error_msg)
+                    if on_error:
+                        GLib.idle_add(on_error, error_msg)
+                    else:
+                        GLib.idle_add(on_complete, error_msg)
                 except Exception as e:
-                    error_msg = f"Error: {str(e)}\nURL: {api_url}"
-                    GLib.idle_add(on_complete, error_msg)
+                    if self.cancel_event.is_set():
+                        print(f"Exception in non-streaming likely due to cancellation: {e}")
+                        GLib.idle_add(on_complete, "Request cancelled")
+                    else:
+                        error_msg = f"Error: {str(e)}\nURL: {api_url}"
+                        if on_error:
+                            GLib.idle_add(on_error, error_msg)
+                        else:
+                            GLib.idle_add(on_complete, error_msg)
         
         except Exception as e:
             error_msg = f"Unexpected error: {str(e)}"
-            GLib.idle_add(on_complete, error_msg)
+            if on_error:
+                GLib.idle_add(on_error, error_msg)
+            else:
+                GLib.idle_add(on_complete, error_msg)
+        finally:
+            # Clean up resources in case they weren't cleaned up earlier
+            self.active_connection = None
     
     def _process_streaming_response(self, response, on_complete):
         """Process the streaming API response"""
         accumulated_text = ""
         start_time = time.time()
         
+        # If response is None (could happen during cancellation), just return
+        if response is None:
+            return
+        
         try:
             for line in response:
+                # Check if request has been cancelled
+                if self.cancel_event.is_set():
+                    print("Streaming response processing cancelled")
+                    break
+                
                 # Check if we've exceeded timeout
                 if time.time() - start_time > self.request_timeout:
                     print("Streaming response timeout reached")
@@ -255,16 +386,35 @@ class APIHandler:
                 except json.JSONDecodeError:
                     print(f"Failed to parse JSON from line: {line}")
         
+        except (socket.error, http.client.HTTPException) as e:
+            # These exceptions are expected during cancellation
+            if self.cancel_event.is_set():
+                print(f"Network exception due to cancellation: {e}")
+            else:
+                error_msg = f"Network error during streaming: {str(e)}"
+                print(error_msg)
+        except AttributeError as e:
+            # This could happen if the response object becomes invalid during cancellation
+            if self.cancel_event.is_set():
+                print(f"AttributeError likely due to cancellation: {e}")
+            else:
+                error_msg = f"AttributeError during streaming: {str(e)}"
+                print(error_msg)
         except Exception as e:
             error_msg = f"Error during streaming: {str(e)}"
             print(error_msg)
             
         finally:
             # Call completion with the complete response
-            if accumulated_text:
-                GLib.idle_add(on_complete, accumulated_text)
+            if self.cancel_event.is_set():
+                # If cancelled, don't call on_complete - the ai_panel will handle it
+                # since it already knows about the cancellation
+                pass
             else:
-                GLib.idle_add(on_complete, "No response received or error occurred.")
+                if accumulated_text:
+                    GLib.idle_add(on_complete, accumulated_text)
+                else:
+                    GLib.idle_add(on_complete, "No response received or error occurred.")
     
     def _notify_stream_update(self, text):
         """Notify all callbacks about a stream update"""

@@ -280,7 +280,7 @@ class AIPanelManager:
             return
             
         # Cancel the API request
-        self.api_handler.cancel_request()
+        self.api_handler.cancel_active_request()
         
         # Clear the stream active flag
         self.panels['stream_active'] = False
@@ -304,7 +304,15 @@ class AIPanelManager:
         # Add a note that the request was canceled
         if 'current_response_buffer' in self.panels and self.panels['current_response_buffer']:
             buffer = self.panels['current_response_buffer']
-            current_text = self.markdown_formatter.get_buffer_text(buffer)
+            
+            # Try to get the current text in the buffer
+            try:
+                current_text = self.markdown_formatter.get_buffer_text(buffer)
+            except AttributeError:
+                # Fallback if get_buffer_text is not available
+                start_iter = buffer.get_start_iter()
+                end_iter = buffer.get_end_iter()
+                current_text = buffer.get_text(start_iter, end_iter, False)
             
             if current_text.strip():
                 # If there was already some response, append the cancellation note
@@ -316,6 +324,8 @@ class AIPanelManager:
             
             # Remove the current buffer reference
             del self.panels['current_response_buffer']
+            
+        return True  # Signal that cancellation was successful
     
     def on_send_clicked(self, widget):
         """Handle send button click or Enter key in query entry"""
@@ -342,16 +352,13 @@ class AIPanelManager:
             self._prepare_for_streaming()
         
         # Send query to API handler
-        self.api_handler.send_query(
+        self.api_handler.send_request(
             query=query,
             terminal_content=terminal_content,
-            on_complete=self._on_response_complete,
-            on_stream_start=self._on_stream_start if self.settings_manager.streaming_enabled else None
+            update_callback=self._update_streaming_text,
+            complete_callback=self._on_response_complete,
+            error_callback=self._on_api_error
         )
-        
-        # Register for streaming updates if enabled
-        if self.settings_manager.streaming_enabled:
-            self.api_handler.register_update_callback(self._update_streaming_text)
     
     def _prepare_for_streaming(self):
         """Prepare for streaming response"""
@@ -711,11 +718,11 @@ class AIPanelManager:
         
         # Send to API handler
         self.api_handler.send_request(
-            text, 
-            terminal_content,
-            self._update_streaming_text,
-            self._on_response_complete,
-            self._on_api_error
+            query=text,
+            terminal_content=terminal_content,
+            update_callback=self._update_streaming_text,
+            complete_callback=self._on_response_complete,
+            error_callback=self._on_api_error
         )
 
     def _on_api_error(self, error_message):

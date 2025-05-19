@@ -256,4 +256,10 @@ class MarkdownFormatter:
             
             # Add a newline at the end of the line
             text_buffer.insert(end_iter, '\n')
-            i += 1 
+            i += 1
+            
+    def get_buffer_text(self, buffer):
+        """Extract all text from a TextBuffer."""
+        start_iter = buffer.get_start_iter()
+        end_iter = buffer.get_end_iter()
+        return buffer.get_text(start_iter, end_iter, False) 
