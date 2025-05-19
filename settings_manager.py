@@ -15,6 +15,7 @@ class SettingsManager:
         self.model = 'gpt-3.5-turbo'
         self.default_panel_width = 300  # Default width of the assistant panel in pixels
         self.streaming_enabled = True  # Enable streaming by default
+        self.font_scale = 1.0  # Default terminal font scale
         
         # Define the settings file location
         self.config_dir = os.path.join(GLib.get_user_config_dir(), 'kiterm')
@@ -42,6 +43,7 @@ class SettingsManager:
                     self.model = settings.get('model', self.model)
                     self.default_panel_width = int(settings.get('panel_width', self.default_panel_width))
                     self.streaming_enabled = settings.get('streaming_enabled', self.streaming_enabled)
+                    self.font_scale = float(settings.get('font_scale', self.font_scale))
                     
                     # Convert string to boolean if needed
                     if isinstance(self.streaming_enabled, str):
@@ -60,7 +62,8 @@ class SettingsManager:
                 'api_key': self.api_key,
                 'model': self.model,
                 'panel_width': self.default_panel_width,
-                'streaming_enabled': self.streaming_enabled
+                'streaming_enabled': self.streaming_enabled,
+                'font_scale': self.font_scale
             }
             
             with open(self.settings_file, 'w') as f:
@@ -197,6 +200,25 @@ class SettingsManager:
         streaming_help_label.set_halign(Gtk.Align.START)
         grid.attach(streaming_help_label, 1, 9, 1, 1)
         
+        # Font Scale
+        font_scale_label = Gtk.Label(label="Font Scale:")
+        font_scale_label.set_halign(Gtk.Align.START)
+        grid.attach(font_scale_label, 0, 10, 1, 1)
+        
+        font_scale_adjustment = Gtk.Adjustment(value=self.font_scale, lower=0.5, upper=3.0, step_increment=0.1, page_increment=0.5, page_size=0)
+        font_scale_spin = Gtk.SpinButton()
+        font_scale_spin.set_adjustment(font_scale_adjustment)
+        font_scale_spin.set_digits(1)  # Show one decimal place
+        font_scale_spin.set_numeric(True)
+        font_scale_spin.set_value(self.font_scale)
+        grid.attach(font_scale_spin, 1, 10, 1, 1)
+        
+        # Help text for font scale
+        font_scale_help_label = Gtk.Label()
+        font_scale_help_label.set_markup("<small>Terminal font size scale (Ctrl+Plus/Minus to change while using)</small>")
+        font_scale_help_label.set_halign(Gtk.Align.START)
+        grid.attach(font_scale_help_label, 1, 11, 1, 1)
+        
         content_area.append(grid)
         
         # In GTK4, we need to connect to signals instead of using run()
@@ -208,6 +230,7 @@ class SettingsManager:
                 self.model = model_entry.get_text()
                 self.default_panel_width = int(width_spin.get_value())
                 self.streaming_enabled = streaming_switch.get_active()
+                self.font_scale = float(font_scale_spin.get_value())
                 
                 # Save to file
                 self.save_settings()

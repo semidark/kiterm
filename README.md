@@ -43,7 +43,7 @@ Based on the POC code and the current state of the application, here's a plan to
    - [X] Refine terminal content extraction
    - [X] Add Scrollbars to Terminal
    - [X] Refine Copy and Paste functionality vor VTE Terminal (ctrl+shift+c and ctrl+shift+v)
-   - [ ] Add Zoom functionality to VTE
+   - [X] Add Zoom functionality to VTE
    
 
    
@@ -101,6 +101,16 @@ sudo apt install -y libgirepository1.0-dev
     ```
 
 This will open a window with an embedded terminal and the AI assistant panel.
+
+### Keyboard Shortcuts
+
+KIterm supports the following keyboard shortcuts for the terminal:
+
+* **Ctrl+Shift+C**: Copy selected text from terminal
+* **Ctrl+Shift+V**: Paste text from clipboard into terminal
+* **Ctrl+Plus (+)**: Zoom in (increase font size)
+* **Ctrl+Minus (-)**: Zoom out (decrease font size)
+* **Ctrl+0**: Reset zoom to default font size
 
 ### Configuring the AI Assistant
 
