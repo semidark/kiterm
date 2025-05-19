@@ -33,6 +33,44 @@
     color: @theme_text_color;
 }
 
+/* Terminal scrollbar styling */
+scrolledwindow > scrollbar {
+    background-color: alpha(@theme_bg_color, 0.8);
+}
+
+scrolledwindow > scrollbar slider {
+    background-color: alpha(@theme_selected_bg_color, 0.5);
+    border-radius: 6px;
+    min-width: 8px;
+    min-height: 8px;
+}
+
+scrolledwindow > scrollbar slider:hover {
+    background-color: alpha(@theme_selected_bg_color, 0.7);
+}
+
+scrolledwindow > scrollbar slider:active {
+    background-color: @theme_selected_bg_color;
+}
+
+/* Terminal specific scrollbar styling */
+.terminal-scrolled-window scrollbar {
+    background-color: alpha(@theme_bg_color, 0.6);
+}
+
+.terminal-scrolled-window scrollbar slider {
+    background-color: alpha(@theme_selected_bg_color, 0.6);
+    border-radius: 4px;
+}
+
+.terminal-scrolled-window scrollbar slider:hover {
+    background-color: alpha(@theme_selected_bg_color, 0.8);
+}
+
+.terminal-scrolled-window scrollbar slider:active {
+    background-color: @theme_selected_bg_color;
+}
+
 /* Chat message styling */
 .user-message {
     background-color: alpha(@theme_selected_bg_color, 0.1);

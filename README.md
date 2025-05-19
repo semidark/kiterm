@@ -41,12 +41,13 @@ Based on the POC code and the current state of the application, here's a plan to
 
 2. **Terminal Integration**
    - [X] Refine terminal content extraction
-   - [ ] Add context management
+   - [X] Add Scrollbars to Terminal
    - [ ] Refine Copy and Paste functionality (ctrl+shift+c and ctrl+shift+v)
-   - [ ] Add Scrollbars to Terminal
+
    
 ### Phase 3: Advanced Features
 1. **Conversation Management**
+   - [ ] Add context management
    - [ ] Save/load conversation history
    - [ ] Improve code block rendering with syntax highlighting
    - [ ] Export conversations

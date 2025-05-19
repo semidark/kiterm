@@ -26,7 +26,15 @@ class TerminalWindow(Gtk.ApplicationWindow):
 
         # Terminal setup
         self.terminal = Vte.Terminal()
-        self.paned.set_start_child(self.terminal)
+        
+        # Create a ScrolledWindow to contain the terminal
+        self.scrolled_window = Gtk.ScrolledWindow()
+        self.scrolled_window.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        self.scrolled_window.set_child(self.terminal)
+        self.scrolled_window.add_css_class("terminal-scrolled-window")
+        
+        # Add the scrolled window to the paned container instead of the terminal directly
+        self.paned.set_start_child(self.scrolled_window)
         self.paned.set_resize_start_child(True)
         
         # Create the AI Chat panel using our panel manager with settings
