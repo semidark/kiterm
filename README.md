@@ -20,6 +20,45 @@ A Python application that displays a terminal using GTK4 and VTE, now featuring 
     *   Terminal preview within the AI panel.
     *   Conversation clearing and settings refresh options.
 
+
+## Implementation Plan
+
+Based on the POC code and the current state of the application, here's a plan to implement the API calls and enhance the chat functionality:
+
+### Phase 1: API Integration
+1. **Create API Handler**
+   - [X] Implement `api_handler.py` based on POC's api.py
+   - [X] Add proper error handling and timeout management
+   - [X] Implement streaming response handling
+
+2. **Connect Settings to API**
+   - [X] Ensure settings are properly passed to the API handler
+   - [ ] Handle API key securely
+   - [ ] Implement model selection
+
+### Phase 2: Enhanced Chat Experience
+1. **Markdown Formatting**
+   - [X] Create a markdown renderer based on POC's markdown.py
+   - [ ] Improved code block interaction (copy, execute, save)
+   - [ ] Improve code block rendering with syntax highlighting
+   - [ ] Add support for clickable links
+
+2. **UI Improvements**
+   - [ ] Add loading indicators during API calls
+
+3. **Terminal Integration**
+   - [ ] Refine terminal content extraction
+   - [ ] Enable code execution directly from chat
+   - [ ] Improved code block interaction (copy to clipboard)
+   - [ ] Add context management
+   
+### Phase 3: Advanced Features
+1. **Conversation Management**
+   - [ ] Save/load conversation history
+   - [ ] Export conversations
+   - [ ] Add keyboard shortcuts
+   - [ ] Select from Multiple Models
+
 ## Prerequisites
 
 Before running this application, you need to have GTK4 and the VTE library development files installed on your system.
