@@ -103,6 +103,18 @@ class SettingsManager:
             modal=True,
             destroy_with_parent=True
         )
+        
+        # If no parent window was provided but we're in a GTK application,
+        # try to find the active window to use as parent
+        if parent_window is None:
+            # First try to get the active window from the application
+            app = Gtk.Application.get_default()
+            if app:
+                active_window = app.get_active_window()
+                if active_window:
+                    settings_dialog.set_transient_for(active_window)
+                    print("Setting dialog parent to active application window")
+        
         settings_dialog.set_default_size(500, 250)
         
         # Add buttons
@@ -263,5 +275,18 @@ class SettingsManager:
         # Connect response signal
         settings_dialog.connect("response", on_response)
         
-        # Present the dialog
-        settings_dialog.present() 
+        # Present the dialog and make sure it gets focus
+        settings_dialog.present()
+        
+        # Explicitly set focus to the dialog
+        url_entry.grab_focus()
+        
+        # Make sure the dialog gets focus even if terminal has focus
+        def ensure_focus():
+            if url_entry and not url_entry.has_focus():
+                url_entry.grab_focus()
+                settings_dialog.set_focus(url_entry)
+            return False
+        
+        # Schedule focus grab after a short delay
+        GLib.timeout_add(100, ensure_focus) 

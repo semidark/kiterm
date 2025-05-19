@@ -70,8 +70,8 @@ class AIPanelView:
         panel.set_margin_bottom(6)
         panel.add_css_class("ai-panel")
         
-        # Find the parent window for dialogs
-        self.parent_window = panel.get_root()
+        # Connect a signal to detect when the panel is mapped (added to a window)
+        panel.connect("map", self._on_panel_mapped)
         
         # Add header with title and buttons
         header = self._create_header()
@@ -233,6 +233,19 @@ class AIPanelView:
     
     def _on_settings_clicked(self, widget):
         """Forward settings button click to controller"""
+        # Ensure the panel gets focus before opening settings
+        # This helps when coming from the terminal
+        if 'panel' in self.components:
+            panel = self.components['panel']
+            # Try to grab focus to ensure dialog can get input
+            panel.grab_focus()
+            
+            # If we have a parent window, make sure it's the active window
+            if self.parent_window:
+                # Use set_focus instead of activate_focus
+                self.parent_window.set_focus(panel)
+            
+        # Forward to controller
         self.controller.on_settings_clicked()
     
     def _on_clear_clicked(self, widget):
@@ -432,4 +445,14 @@ class AIPanelView:
         """Reset cursor when mouse leaves the resize handle"""
         window = self.parent_window
         if window:
-            window.set_cursor(None) 
+            window.set_cursor(None)
+    
+    def _on_panel_mapped(self, widget):
+        """Called when the panel is mapped (added to a window)"""
+        # Update parent window reference
+        self.parent_window = widget.get_root()
+        if self.parent_window:
+            print("Panel mapped: Parent window reference updated")
+        else:
+            print("Panel mapped but no parent window found")
+        return False 

@@ -77,8 +77,28 @@ class AIPanelController:
         print("Settings button clicked")
         # Get parent window from view (may be None initially)
         parent_window = self.view.parent_window
+        
+        # If the parent_window is None, try to get it from the current root
+        try:
+            if parent_window is None and hasattr(self.view, 'components') and 'panel' in self.view.components:
+                panel = self.view.components['panel']
+                if panel is not None:
+                    parent_window = panel.get_root()
+                    if parent_window:
+                        print("Found parent window from panel's root")
+        except Exception as e:
+            print(f"Warning: Failed to get parent window: {str(e)}")
+            
         # Open the settings dialog
-        self.settings_manager.open_settings_dialog(parent_window)
+        try:
+            self.settings_manager.open_settings_dialog(parent_window)
+        except Exception as e:
+            print(f"Error opening settings dialog: {str(e)}")
+            # Try opening without parent as fallback
+            try:
+                self.settings_manager.open_settings_dialog(None)
+            except Exception as inner_e:
+                print(f"Fatal error opening settings dialog: {str(inner_e)}")
     
     def on_settings_changed(self):
         """Handle settings changes"""
