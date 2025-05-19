@@ -42,6 +42,11 @@ class AIPanelManager:
         self.auto_scroll_locked = False  # True if user has scrolled up
         self.is_programmatic_scroll = False  # True during our own scroll operations
         
+        # Resize handling
+        self.resize_timeout_id = None
+        self.resize_active = False
+        self.last_resize_height = 0
+        
         # Debug mode - set to False for production
         self.debug_mode = False
     
@@ -137,28 +142,88 @@ class AIPanelManager:
         panel.append(chat_scroll)
         
         # Query input
-        query_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        query_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
         query_box.add_css_class("ai-input")
-        query_entry = Gtk.Entry()
-        query_entry.set_placeholder_text("Type your question here...")
-        query_entry.connect("activate", self.on_send_clicked)
+        
+        # Create a horizontal box for the input field and buttons
+        input_button_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        
+        # Replace Entry with TextView inside a ScrolledWindow
+        query_entry = Gtk.TextView()
+        query_entry.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+        query_entry.set_accepts_tab(False)  # Allow tabbing out of the TextView
+        query_entry.set_hexpand(True)
+        query_entry.set_vexpand(False)  # Don't allow text view to expand by default
+
+        # Create scrolled window for the input field
+        query_scroll = Gtk.ScrolledWindow()
+        query_scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC) # No hbar, vbar auto
+        query_scroll.set_child(query_entry)
+        query_scroll.set_hexpand(True)
+        query_scroll.set_vexpand(False)  # Don't expand vertically by default
+        
+        # Calculate dynamic starting height for the input area
+        context = query_entry.get_pango_context()
+        font_description = context.get_font_description() 
+        if font_description is None: # Fallback if no font description yet
+            font_description = Pango.FontDescription.from_string("Sans 10") # A sensible default
+
+        language = Pango.Language.get_default() # language can be None
+        metrics = context.get_metrics(font_description, language) 
+        
+        single_line_height_pango = metrics.get_ascent() + metrics.get_descent()
+        single_line_height_pixels = single_line_height_pango / Pango.SCALE
+        
+        input_padding = 12  # Total vertical padding (e.g., 6px top + 6px bottom)
+        min_input_height = int(single_line_height_pixels + input_padding)
+
+        # Set initial height using fixed height constraint
+        query_scroll.set_size_request(-1, min_input_height) # Width: unchanged, Height: single line
+        
+        # Add a resize handle above the input field
+        resize_handle = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
+        resize_handle.set_size_request(-1, 6)  # Height of 6 pixels
+        resize_handle.add_css_class("resize-handle")
+        
+        # Make the handle draggable
+        drag_controller = Gtk.GestureDrag.new()
+        drag_controller.connect("drag-begin", self._on_resize_begin)
+        drag_controller.connect("drag-update", self._on_resize_update)
+        drag_controller.connect("drag-end", self._on_resize_end)
+        resize_handle.add_controller(drag_controller)
+        
+        # Add cursor change to indicate resize handle
+        motion_controller = Gtk.EventControllerMotion.new()
+        motion_controller.connect("enter", self._on_handle_enter)
+        motion_controller.connect("leave", self._on_handle_leave)
+        resize_handle.add_controller(motion_controller)
         
         # Add key event controller for keyboard shortcuts
         key_controller = Gtk.EventControllerKey()
         key_controller.connect("key-pressed", self.on_key_pressed)
         query_entry.add_controller(key_controller)
         
-        query_box.append(query_entry)
+        # Add all components to the query box
+        query_box.append(resize_handle)
+        input_button_box.append(query_scroll)
         
         send_button = Gtk.Button.new_with_label("Ask AI")
         send_button.connect("clicked", self.on_send_clicked)
-        query_box.append(send_button)
+        send_button.set_valign(Gtk.Align.CENTER)  # Center the button vertically
+        send_button.set_vexpand(False)  # Don't let the button expand vertically
+        send_button.set_size_request(-1, min_input_height)  # Match the height of the single-line input
+        input_button_box.append(send_button)
         
         # Stop button (initially hidden)
         stop_button = Gtk.Button.new_with_label("Stop")
         stop_button.connect("clicked", self.on_stop_clicked)
         stop_button.set_visible(False)
-        query_box.append(stop_button)
+        stop_button.set_valign(Gtk.Align.CENTER)  # Center the button vertically
+        stop_button.set_vexpand(False)  # Don't let the button expand vertically
+        stop_button.set_size_request(-1, min_input_height)  # Match the height of the single-line input
+        input_button_box.append(stop_button)
+        
+        query_box.append(input_button_box)
         
         panel.append(query_box)
         
@@ -170,6 +235,7 @@ class AIPanelManager:
             'terminal_preview_view': terminal_preview_view,
             'terminal_preview_expander': terminal_preview_expander,
             'query_entry': query_entry,
+            'query_scroll': query_scroll,  # Store reference to the ScrolledWindow
             'send_button': send_button,
             'stop_button': stop_button,
             'conversation': [],
@@ -324,6 +390,14 @@ class AIPanelManager:
             self.stop_active_request()
             return True  # Signal that the event was handled
         
+        # Check for Enter key to send message (without Shift)
+        if (keyval == Gdk.KEY_Return or keyval == Gdk.KEY_KP_Enter):
+            # Check if Shift modifier is NOT pressed
+            if not (state & Gdk.ModifierType.SHIFT_MASK):
+                self.on_send_clicked(None)  # Pass None as widget argument
+                return True  # Event handled, don't insert a newline
+            # If Shift+Enter, let the default handler add a newline
+        
         return False  # Allow other handlers to process the event
     
     def on_stop_clicked(self, widget):
@@ -390,15 +464,21 @@ class AIPanelManager:
     
     def on_send_clicked(self, widget):
         """Handle send button click or Enter key in query entry"""
-        query = self.panels['query_entry'].get_text()
-        if not query.strip():
+        # Get text from TextView buffer
+        text_view = self.panels['query_entry']
+        buffer = text_view.get_buffer()
+        start_iter = buffer.get_start_iter()
+        end_iter = buffer.get_end_iter()
+        query = buffer.get_text(start_iter, end_iter, True).strip() # True to include hidden chars
+        
+        if not query:
             return
         
         # Add user message to conversation
         self.add_user_message(query)
         
-        # Clear the entry
-        self.panels['query_entry'].set_text("")
+        # Clear the TextView buffer
+        buffer.set_text("")
         
         # Toggle buttons
         if 'send_button' in self.panels and 'stop_button' in self.panels:
@@ -1115,14 +1195,15 @@ class AIPanelManager:
 
     def process_input(self):
         """Process the input from the entry field"""
-        if 'input_field' not in self.panels:
+        if 'query_entry' not in self.panels:
             return
             
-        # Get the text from the input field
-        buffer = self.panels['input_field'].get_buffer()
+        # Get the text from the TextView input field
+        text_view = self.panels['query_entry']
+        buffer = text_view.get_buffer()
         start_iter = buffer.get_start_iter()
         end_iter = buffer.get_end_iter()
-        text = buffer.get_text(start_iter, end_iter, False).strip()
+        text = buffer.get_text(start_iter, end_iter, True).strip()
         
         if not text:
             return
@@ -1196,4 +1277,65 @@ class AIPanelManager:
         if hasattr(self, 'last_full_response'):
             self._show_raw_message_dialog(self.last_full_response)
         else:
-            self._show_notification("No API response available yet") 
+            self._show_notification("No API response available yet")
+
+    # Add these new methods for resize handling
+    def _on_resize_begin(self, gesture, start_x, start_y):
+        """Handle the start of resize drag"""
+        # Store the initial height
+        scroll = self.panels.get('query_scroll')
+        if scroll:
+            # Just store the initial height, we'll use it at the end
+            self.panels['resize_initial_height'] = scroll.get_allocated_height()
+            
+            # Mark resize as active - we won't perform any updates until resize is complete
+            self.resize_active = True
+    
+    def _on_resize_update(self, gesture, offset_x, offset_y):
+        """Track resize updates without applying them immediately"""
+        # We only store the latest offset, but don't apply any changes
+        # This eliminates flickering by delaying all changes until drag is complete
+        if self.resize_active:
+            self.panels['current_resize_offset_y'] = offset_y
+    
+    def _on_resize_end(self, gesture, offset_x, offset_y):
+        """Handle the end of resize drag by applying the final size once"""
+        if not self.resize_active:
+            return
+            
+        # Clear active state
+        self.resize_active = False
+        
+        # Apply the final resize
+        scroll = self.panels.get('query_scroll')
+        initial_height = self.panels.get('resize_initial_height', 0)
+        
+        if scroll and initial_height:
+            # Calculate final height - move upward (negative offset) to increase height
+            final_height = max(initial_height - offset_y, 30)  # Minimum height of 30px
+            
+            # Apply the size only once at the end
+            scroll.set_size_request(-1, final_height)
+            
+            # Update buttons to match the new height
+            if 'send_button' in self.panels:
+                self.panels['send_button'].set_size_request(-1, final_height)
+            if 'stop_button' in self.panels:
+                self.panels['stop_button'].set_size_request(-1, final_height)
+            
+            # Make sure the scroll window is refreshed
+            scroll.queue_resize()
+    
+    def _on_handle_enter(self, controller, x, y):
+        """Change cursor when mouse enters the resize handle"""
+        window = self.parent_window
+        if window:
+            display = window.get_display()
+            cursor = Gdk.Cursor.new_from_name("ns-resize", None)
+            window.set_cursor(cursor)
+    
+    def _on_handle_leave(self, controller):
+        """Reset cursor when mouse leaves the resize handle"""
+        window = self.parent_window
+        if window:
+            window.set_cursor(None) 

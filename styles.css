@@ -152,4 +152,16 @@ paned > separator {
     background-color: alpha(@theme_selected_bg_color, 0.2);
     border-radius: 4px;
     margin: 4px 0;
+}
+
+/* Resize handle styling */
+.resize-handle {
+    background-color: alpha(@borders, 0.3);
+    border-radius: 3px;
+    margin: 0 0 2px 0;
+    min-height: 6px;
+}
+
+.resize-handle:hover {
+    background-color: alpha(@theme_selected_bg_color, 0.4);
 } 
