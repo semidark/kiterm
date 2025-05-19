@@ -2,6 +2,7 @@
 
 import os
 import time
+import re
 from gi.repository import Gtk, GLib, Pango, Gdk, Vte
 
 from api_handler import APIHandler
@@ -40,6 +41,9 @@ class AIPanelManager:
         self.scroll_timeout_id = None
         self.auto_scroll_locked = False  # True if user has scrolled up
         self.is_programmatic_scroll = False  # True during our own scroll operations
+        
+        # Debug mode - set to False for production
+        self.debug_mode = False
     
     def _add_css_styling(self):
         """Add CSS styling for the panel components"""
@@ -188,6 +192,12 @@ class AIPanelManager:
         title_label.set_margin_start(4)
         header_box.append(title_label)
         
+        # Raw message button (keeping this as it's useful for development)
+        raw_button = Gtk.Button.new_from_icon_name("dialog-information-symbolic")
+        raw_button.set_tooltip_text("Show Raw Message")
+        raw_button.connect("clicked", self._on_show_raw_clicked)
+        header_box.append(raw_button)
+        
         # Settings button
         settings_button = Gtk.Button.new_from_icon_name("emblem-system-symbolic")
         settings_button.set_tooltip_text("Settings")
@@ -261,13 +271,59 @@ class AIPanelManager:
         # Add a new welcome message
         self.add_system_message("Conversation cleared. Ask a new question.")
     
+    def _show_raw_message_dialog(self, message):
+        """Show a dialog with the raw message content for debugging"""
+        dialog = Gtk.Dialog(
+            title="Raw Message Content",
+            parent=self.parent_window,
+            modal=True
+        )
+        dialog.add_button("Close", Gtk.ResponseType.CLOSE)
+        dialog.set_default_size(600, 400)
+        
+        content_area = dialog.get_content_area()
+        
+        # Add a label with instructions
+        label = Gtk.Label(label="This is the raw message content received from the API:")
+        label.set_margin_top(10)
+        label.set_margin_bottom(10)
+        label.set_margin_start(10)
+        label.set_margin_end(10)
+        content_area.append(label)
+        
+        # Create a scrolled window for the text view
+        scrolled = Gtk.ScrolledWindow()
+        scrolled.set_hexpand(True)
+        scrolled.set_vexpand(True)
+        scrolled.set_margin_bottom(10)
+        scrolled.set_margin_start(10)
+        scrolled.set_margin_end(10)
+        
+        # Create a text view for the message content
+        text_view = Gtk.TextView()
+        text_view.set_editable(False)
+        text_view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+        text_view.add_css_class("monospace-text")
+        
+        buffer = text_view.get_buffer()
+        buffer.set_text(message)
+        
+        scrolled.set_child(text_view)
+        content_area.append(scrolled)
+        
+        # Connect response signal
+        dialog.connect("response", lambda dialog, response_id: dialog.destroy())
+        
+        # Show the dialog
+        dialog.present()
+    
     def on_key_pressed(self, controller, keyval, keycode, state):
         """Handle key press events in GTK4"""
         # Check for ESC key (GDK_KEY_Escape = 65307)
         if keyval == 65307:
             self.stop_active_request()
             return True  # Signal that the event was handled
-            
+        
         return False  # Allow other handlers to process the event
     
     def on_stop_clicked(self, widget):
@@ -314,13 +370,18 @@ class AIPanelManager:
                 end_iter = buffer.get_end_iter()
                 current_text = buffer.get_text(start_iter, end_iter, False)
             
+            # Save the partial response for raw message display
             if current_text.strip():
-                # If there was already some response, append the cancellation note
+                # Store the partial response with a note about cancelation
+                self.last_full_response = current_text + "\n\n[Response canceled by user]"
+                
+                # Append cancelation note to the displayed message
                 updated_text = current_text + "\n\n*Request canceled by user*"
                 self.markdown_formatter.format_markdown(buffer, updated_text)
             else:
                 # If there was no response yet, just show the cancellation note
                 self.markdown_formatter.format_markdown(buffer, "*Request canceled by user*")
+                self.last_full_response = "[Response canceled by user before any content was received]"
             
             # Remove the current buffer reference
             del self.panels['current_response_buffer']
@@ -438,6 +499,10 @@ class AIPanelManager:
         # Store the latest text
         self.pending_stream_text = text
         
+        # Also store the latest text for raw message display
+        # This ensures we have the most recent content even if canceled
+        self.last_full_response = text
+        
         # If no update is scheduled, schedule one
         if self.stream_update_timeout_id is None:
             current_time = time.time() * 1000  # Convert to ms
@@ -496,8 +561,31 @@ class AIPanelManager:
         # Update the button state
         self._update_button_state()
         
-        # If for some reason the final update didn't apply (unlikely),
-        # make sure we have the full text
+        # Store the response text for raw message display
+        self.last_full_response = response_text
+        
+        # For streaming responses, we need to remove the streaming view
+        # and create a new properly formatted response with interactive code blocks
+        if self.settings_manager.streaming_enabled and '```' in response_text:
+            # Remove the streaming text view if it exists
+            if 'current_response_box' in self.panels and self.panels['current_response_box']:
+                streaming_box = self.panels['current_response_box'] 
+                if streaming_box.get_parent():
+                    streaming_box.get_parent().remove(streaming_box)
+                
+                # Clear references to streaming components
+                if 'current_response_buffer' in self.panels:
+                    del self.panels['current_response_buffer']
+                if 'current_text_view' in self.panels:
+                    del self.panels['current_text_view']
+                if 'current_response_box' in self.panels:
+                    del self.panels['current_response_box']
+                    
+                # Add a new properly formatted message
+                self.add_message('assistant', response_text)
+                return
+        
+        # If no code blocks or not streaming, just update the existing buffer
         if 'current_response_buffer' in self.panels and self.panels['current_response_buffer']:
             self.markdown_formatter.format_markdown(
                 self.panels['current_response_buffer'], 
@@ -507,7 +595,6 @@ class AIPanelManager:
             # For the final response content, ensure it's visible
             # by temporarily unlocking auto-scrolling
             if self.auto_scroll_locked:
-                # print("_on_response_complete: Auto-scroll was locked, unlocking for final content.")
                 self.auto_scroll_locked = False
                 
             # Use delayed scrolling after completion too
@@ -557,13 +644,12 @@ class AIPanelManager:
             return False
 
         if role not in ('user', 'assistant', 'system', 'error'):
-            logger.error(f"Invalid role: {role}")
+            print(f"Invalid role: {role}")
             return False
 
         # For new complete messages (not streaming updates), we want to ensure they're visible
         # by temporarily unlocking auto-scrolling
         if self.auto_scroll_locked:
-            # print(f"add_message (role: {role}): Auto-scroll was locked, unlocking for new message.")
             self.auto_scroll_locked = False
 
         # Create message widget
@@ -578,45 +664,388 @@ class AIPanelManager:
         if bold:
             header.set_markup(f"<b>{role.capitalize()}</b>")
         message_container.append(header)
-
-        # Create TextView and TextBuffer for the message content
-        content_view = Gtk.TextView()
-        content_view.set_name(f"{role}-content")
-        content_view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
-        content_view.set_editable(False)
-        content_view.set_cursor_visible(False)
-        content_view.set_left_margin(10)
-        content_view.set_right_margin(10)
-        content_view.set_top_margin(5)
-        content_view.set_bottom_margin(5)
-
-        # Create and configure buffer
-        content_buffer = content_view.get_buffer()
-
-        # Apply markdown formatting if it's not a user message
+        
+        # Apply markdown formatting or special handling depending on role
         if role != 'user':
-            # Add special typing indicator if animation is requested
+            # Handle animation if requested
             if animate:
+                content_view = Gtk.TextView()
+                content_view.set_name(f"{role}-content")
+                content_view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+                content_view.set_editable(False)
+                content_view.set_cursor_visible(False)
+                content_view.set_left_margin(10)
+                content_view.set_right_margin(10)
+                content_view.set_top_margin(5)
+                content_view.set_bottom_margin(5)
+                
+                content_buffer = content_view.get_buffer()
                 content_buffer.set_text("▋")  # Typing indicator
+                message_container.append(content_view)
+                
                 self.panels['typing_view'] = content_view
                 self.panels['typing_buffer'] = content_buffer
                 self.panels['current_response_text'] = ""
                 self.panels['current_response_buffer'] = content_buffer
                 self._start_typing_animation()
             else:
-                # Apply markdown formatting
-                self.markdown_formatter.format_markdown(content_buffer, text)
+                # Extract code blocks manually with better handling of different formats
+                code_blocks = []
+                if '```' in text and role == 'assistant':
+                    # Find all ```segments in the text
+                    segments = text.split('```')
+                    
+                    # Skip the first segment (before the first ```)
+                    for i in range(1, len(segments) - 1, 2):
+                        # This is a code block segment (content between ```)
+                        code_segment = segments[i]
+                        
+                        # Try to extract language and code
+                        # Check for first newline to separate language from code
+                        nl_pos = code_segment.find('\n')
+                        
+                        if nl_pos > 0:
+                            # There's a newline - language might be before it
+                            lang = code_segment[:nl_pos].strip()
+                            code = code_segment[nl_pos+1:]
+                        else:
+                            # No newline - check if there's a space to separate language
+                            space_pos = code_segment.find(' ')
+                            if space_pos > 0 and space_pos < 20:  # Language ID shouldn't be too long
+                                lang = code_segment[:space_pos].strip()
+                                code = code_segment[space_pos+1:]
+                            else:
+                                # No clear language separator, treat whole segment as code
+                                lang = ""
+                                code = code_segment
+                        
+                        code_blocks.append((lang, code))
+                
+                if code_blocks and role == 'assistant':
+                    # Process text to replace code blocks with placeholders
+                    processed_text = text
+                    placeholder_map = {}
+                    
+                    # Use a better approach for replacement - collect positions of all ``` markers
+                    positions = []
+                    for m in re.finditer(r'```', processed_text):
+                        positions.append(m.start())
+                    
+                    # Pair start/end positions
+                    block_ranges = []
+                    for i in range(0, len(positions), 2):
+                        if i+1 < len(positions):
+                            block_ranges.append((positions[i], positions[i+1]+3))  # +3 to include the closing ```
+                    
+                    # Sort ranges by start position (to ensure we replace from end to start)
+                    block_ranges.sort(reverse=True)
+                    
+                    # Replace blocks with placeholders (work backwards to avoid index shifting)
+                    for i, (start, end) in enumerate(block_ranges):
+                        placeholder = f"__CODE_BLOCK_{i}__"
+                        block_content = processed_text[start:end]
+                            
+                        # Replace this specific block with the placeholder
+                        processed_text = processed_text[:start] + placeholder + processed_text[end:]
+                        
+                        # Use the extracted language and code from our manual parsing
+                        if i < len(code_blocks):
+                            lang, code = code_blocks[i]
+                            placeholder_map[placeholder] = (lang, code)
+                        else:
+                            # Fallback if something went wrong with our counting
+                            placeholder_map[placeholder] = ("", block_content[3:-3])
+                    
+                    # Split by placeholders
+                    parts = re.split(r'(__CODE_BLOCK_\d+__)', processed_text)
+                    
+                    for part in parts:
+                        if part in placeholder_map:
+                            # This is a code block placeholder
+                            lang, code = placeholder_map[part]
+                            self._add_interactive_code_block(message_container, lang, code)
+                        else:
+                            # This is regular text
+                            if part.strip():
+                                text_view = Gtk.TextView()
+                                text_view.set_name(f"{role}-content")
+                                text_view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+                                text_view.set_editable(False)
+                                text_view.set_cursor_visible(False)
+                                text_view.set_left_margin(10)
+                                text_view.set_right_margin(10)
+                                text_view.set_top_margin(5)
+                                text_view.set_bottom_margin(5)
+                                
+                                buffer = text_view.get_buffer()
+                                self.markdown_formatter.format_markdown(buffer, part)
+                                message_container.append(text_view)
+                else:
+                    # Standard markdown for the entire content
+                    content_view = Gtk.TextView()
+                    content_view.set_name(f"{role}-content")
+                    content_view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+                    content_view.set_editable(False)
+                    content_view.set_cursor_visible(False)
+                    content_view.set_left_margin(10)
+                    content_view.set_right_margin(10)
+                    content_view.set_top_margin(5)
+                    content_view.set_bottom_margin(5)
+                    
+                    content_buffer = content_view.get_buffer()
+                    self.markdown_formatter.format_markdown(content_buffer, text)
+                    message_container.append(content_view)
         else:
             # Simple text for user messages
+            content_view = Gtk.TextView()
+            content_view.set_name(f"{role}-content")
+            content_view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+            content_view.set_editable(False)
+            content_view.set_cursor_visible(False)
+            content_view.set_left_margin(10)
+            content_view.set_right_margin(10)
+            content_view.set_top_margin(5)
+            content_view.set_bottom_margin(5)
+            
+            content_buffer = content_view.get_buffer()
             content_buffer.set_text(text)
-
-        message_container.append(content_view)
+            message_container.append(content_view)
 
         # Scroll to the bottom
         self._delayed_scroll_to_bottom()
         
         return True
-
+        
+    def _add_interactive_code_block(self, parent_container, language, code):
+        """Add an interactive code block with buttons for copy, execute, and save"""
+        # Create a container for the code block
+        code_block_container = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        code_block_container.set_margin_start(10)
+        code_block_container.set_margin_end(10)
+        code_block_container.set_margin_top(5)
+        code_block_container.set_margin_bottom(5)
+        code_block_container.add_css_class("code-block-container")
+        
+        # Create header with language info and buttons
+        header_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=4)
+        header_box.add_css_class("code-block-header")
+        
+        # Language label
+        language = language.strip().lower() if language else ""
+        lang_label = Gtk.Label()
+        if language:
+            lang_label.set_markup(f"<span size='small'>{language}</span>")
+        else:
+            # Fixed markup to use valid style values
+            lang_label.set_markup(f"<span size='small' style='italic'>code</span>")
+        lang_label.set_halign(Gtk.Align.START)
+        lang_label.set_hexpand(True)
+        header_box.append(lang_label)
+        
+        # Action buttons
+        copy_button = Gtk.Button.new_from_icon_name("edit-copy-symbolic")
+        copy_button.set_tooltip_text("Copy to clipboard")
+        copy_button.add_css_class("code-action-button")
+        copy_button.set_valign(Gtk.Align.CENTER)
+        
+        execute_button = Gtk.Button.new_from_icon_name("system-run-symbolic")
+        execute_button.set_tooltip_text("Execute in terminal")
+        execute_button.add_css_class("code-action-button")
+        execute_button.set_valign(Gtk.Align.CENTER)
+        
+        save_button = Gtk.Button.new_from_icon_name("document-save-symbolic")
+        save_button.set_tooltip_text("Save to file")
+        save_button.add_css_class("code-action-button")
+        save_button.set_valign(Gtk.Align.CENTER)
+        
+        header_box.append(copy_button)
+        header_box.append(execute_button)
+        header_box.append(save_button)
+        
+        code_block_container.append(header_box)
+        
+        # Code TextView with monospace font
+        code_view = Gtk.TextView()
+        code_view.set_editable(False)
+        code_view.set_cursor_visible(False)
+        code_view.set_wrap_mode(Gtk.WrapMode.NONE)
+        code_view.add_css_class("monospace-text")
+        code_view.add_css_class("code-block-content")
+        
+        # Create scrolled window for code
+        code_scroll = Gtk.ScrolledWindow()
+        code_scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        code_scroll.set_min_content_height(100)
+        code_scroll.set_max_content_height(300)  # Limit the height
+        code_scroll.set_child(code_view)
+        
+        # Set the code content
+        code_buffer = code_view.get_buffer()
+        code_buffer.set_text(code)
+        
+        code_block_container.append(code_scroll)
+        
+        # Connect button signals
+        copy_button.connect("clicked", self._on_copy_code_clicked, code)
+        execute_button.connect("clicked", self._on_execute_code_clicked, code)
+        save_button.connect("clicked", self._on_save_code_clicked, code, language)
+        
+        # Add the code block to the parent container
+        parent_container.append(code_block_container)
+        
+        # Return the container to allow for further manipulation
+        return code_block_container
+    
+    def _on_copy_code_clicked(self, button, code):
+        """Handle copy code button click"""
+        # For GTK4
+        clipboard = Gdk.Display.get_default().get_clipboard()
+        clipboard.set(code)
+        
+        # Visual feedback - temporarily change button icon
+        original_icon = button.get_icon_name()
+        button.set_icon_name("emblem-ok-symbolic")
+        
+        # Set timer to revert icon
+        def restore_icon():
+            button.set_icon_name(original_icon)
+            return False
+            
+        GLib.timeout_add(800, restore_icon)
+        
+        # Show a brief notification
+        self._show_notification("Code copied to clipboard")
+    
+    def _on_execute_code_clicked(self, button, code):
+        """Handle execute code button click"""
+        if self.terminal:
+            # Visual feedback - temporarily change button icon
+            original_icon = button.get_icon_name()
+            button.set_icon_name("emblem-system-symbolic")
+            
+            # Set timer to revert icon
+            def restore_icon():
+                button.set_icon_name(original_icon)
+                return False
+                
+            GLib.timeout_add(800, restore_icon)
+            
+            # Send the code to the terminal
+            terminal_feed_binary = isinstance(self.terminal.feed_child, type(lambda: None))
+            
+            # Add a newline at the end if not present
+            if not code.endswith('\n'):
+                code += '\n'
+                
+            try:
+                if terminal_feed_binary:
+                    # For newer VTE versions that expect bytes
+                    self.terminal.feed_child(code.encode())
+                else:
+                    # For older VTE versions
+                    self.terminal.feed_child(code, len(code))
+                
+                self._show_notification("Code executed in terminal")
+            except Exception as e:
+                self._show_notification(f"Error executing code: {str(e)}")
+        else:
+            self._show_notification("Terminal not available")
+    
+    def _on_save_code_clicked(self, button, code, language=None):
+        """Handle save code button click"""
+        # Create a file chooser dialog
+        dialog = Gtk.FileChooserDialog(
+            title="Save Code Block",
+            parent=self.parent_window,
+            action=Gtk.FileChooserAction.SAVE
+        )
+        
+        # Add buttons
+        dialog.add_button("Cancel", Gtk.ResponseType.CANCEL)
+        dialog.add_button("Save", Gtk.ResponseType.ACCEPT)
+        
+        # Set default filename based on language
+        default_filename = "code"
+        if language:
+            extensions = {
+                "python": ".py",
+                "javascript": ".js",
+                "typescript": ".ts",
+                "html": ".html",
+                "css": ".css",
+                "bash": ".sh",
+                "shell": ".sh",
+                "zsh": ".sh",
+                "c": ".c",
+                "cpp": ".cpp",
+                "java": ".java",
+                "go": ".go",
+                "rust": ".rs",
+                "ruby": ".rb",
+                "php": ".php",
+            }
+            ext = extensions.get(language.lower(), ".txt")
+            default_filename += ext
+        else:
+            default_filename += ".txt"
+            
+        dialog.set_current_name(default_filename)
+        
+        # Connect to response signal
+        dialog.connect("response", self._on_save_dialog_response, code)
+        
+        # Show the dialog
+        dialog.present()
+    
+    def _on_save_dialog_response(self, dialog, response_id, code):
+        """Handle response from the save dialog"""
+        if response_id == Gtk.ResponseType.ACCEPT:
+            # Get the selected file path
+            file_path = dialog.get_file().get_path()
+            
+            try:
+                # Save the code to the file
+                with open(file_path, 'w') as f:
+                    f.write(code)
+                self._show_notification(f"Saved to {os.path.basename(file_path)}")
+            except Exception as e:
+                self._show_notification(f"Error saving file: {str(e)}")
+        
+        # Close the dialog
+        dialog.destroy()
+    
+    def _show_notification(self, message, timeout=2000):
+        """Show a temporary notification message in the UI"""
+        # Check if we already have a notification
+        if hasattr(self, '_notification_label'):
+            # Remove the existing notification if present
+            if self._notification_label.get_parent():
+                self._notification_label.get_parent().remove(self._notification_label)
+        else:
+            # Create a notification label
+            self._notification_label = Gtk.Label()
+            self._notification_label.add_css_class("notification-message")
+            self._notification_label.set_halign(Gtk.Align.CENTER)
+        
+        # Set the message
+        self._notification_label.set_text(message)
+        
+        # Add to the panel
+        if 'panel' in self.panels:
+            # Get the first child which should be the header
+            header = self.panels['panel'].get_first_child()
+            if header:
+                # Insert after the header
+                self.panels['panel'].insert_child_after(self._notification_label, header)
+        
+        # Auto-remove after timeout
+        def remove_notification():
+            if self._notification_label.get_parent():
+                self._notification_label.get_parent().remove(self._notification_label)
+            return False
+            
+        GLib.timeout_add(timeout, remove_notification)
+    
     def _scroll_to_bottom(self):
         """Scroll the chat view to the bottom if auto-scroll is not locked."""
         chat_scroll = self.panels.get('chat_scroll')
@@ -635,10 +1064,8 @@ class AIPanelManager:
             is_at_bottom = vadj.get_value() >= (vadj.get_upper() - vadj.get_page_size() - is_at_bottom_threshold)
             if is_at_bottom:
                 # If we're already at the bottom, unlock auto-scroll
-                # print("_scroll_to_bottom: View is at bottom despite lock, unlocking.")
                 self.auto_scroll_locked = False
             else:
-                # print("_scroll_to_bottom: Auto-scroll locked and not at bottom. Skipping scroll.")
                 return GLib.SOURCE_REMOVE  # Skip scrolling when locked and not at bottom
 
         # Set the programmatic scroll flag to prevent _on_vadj_changed from responding
@@ -749,7 +1176,6 @@ class AIPanelManager:
             # This change was due to our own _scroll_to_bottom.
             # Programmatic scrolls are intended to go to the bottom, so unlock auto-scroll.
             if self.auto_scroll_locked:
-                # print("_on_vadj_changed: Programmatic scroll; ensuring auto_scroll_locked is False.")
                 self.auto_scroll_locked = False
             return  # Do not proceed to user scroll logic
 
@@ -760,9 +1186,14 @@ class AIPanelManager:
 
         if not is_at_bottom:
             if not self.auto_scroll_locked:  # Lock only if it wasn't already
-                # print("User scrolled up. Auto-scroll locked.")
                 self.auto_scroll_locked = True
         else:  # User is at or scrolled to the bottom
             if self.auto_scroll_locked:  # Unlock only if it was locked
-                # print("User is at/scrolled to bottom. Auto-scroll unlocked.")
                 self.auto_scroll_locked = False 
+
+    def _on_show_raw_clicked(self, button):
+        """Show the raw message from the last API response"""
+        if hasattr(self, 'last_full_response'):
+            self._show_raw_message_dialog(self.last_full_response)
+        else:
+            self._show_notification("No API response available yet") 
