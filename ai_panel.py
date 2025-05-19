@@ -1053,8 +1053,33 @@ class AIPanelManager:
         # Create scrolled window for code
         code_scroll = Gtk.ScrolledWindow()
         code_scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
-        code_scroll.set_min_content_height(100)
-        code_scroll.set_max_content_height(300)  # Limit the height
+        
+        # Calculate height based on content
+        line_count = code.count('\n')
+        
+        # Get font metrics to calculate line height
+        context = code_view.get_pango_context()
+        font_description = context.get_font_description() 
+        if font_description is None:
+            font_description = Pango.FontDescription.from_string("Monospace 10")
+            
+        language = Pango.Language.get_default()
+        metrics = context.get_metrics(font_description, language) 
+        
+        line_height_pango = metrics.get_ascent() + metrics.get_descent()
+        line_height_pixels = line_height_pango / Pango.SCALE
+        
+        # Add some padding (e.g., 2px per line)
+        padding_per_line = 2
+        content_height = int(line_count * (line_height_pixels + padding_per_line))
+        
+        # Set a reasonable minimum height (for single line code)
+        min_height = int(line_height_pixels + 10)  # 10px for padding
+        content_height = max(content_height, min_height)
+        
+        # Don't set max height - let it grow with content
+        code_scroll.set_min_content_height(content_height)
+        
         code_scroll.set_child(code_view)
         
         # Set the code content
