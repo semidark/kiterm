@@ -58,6 +58,11 @@ class TerminalWindow(Gtk.ApplicationWindow):
         # self.terminal.set_color_foreground(Gdk.RGBA(red=0.0, green=0.0, blue=0.0, alpha=1.0))
         # self.terminal.set_color_background(Gdk.RGBA(red=1.0, green=1.0, blue=1.0, alpha=0.0))
 
+        # GTK4 way: Add key event controller for keyboard shortcuts
+        key_controller = Gtk.EventControllerKey()
+        key_controller.connect("key-pressed", self.on_key_pressed)
+        self.terminal.add_controller(key_controller)
+
         # Spawn a shell
         # Determine the default shell
         shell = os.environ.get('SHELL', '/bin/zsh')
@@ -94,6 +99,19 @@ class TerminalWindow(Gtk.ApplicationWindow):
         
         # Register settings change handler
         self.settings_manager.register_settings_change_callback(self.on_settings_changed)
+
+    def on_key_pressed(self, controller, keyval, keycode, state):
+        """Handles key press events on the VTE Terminal using GTK4's event controller."""
+        # Check for Ctrl+Shift+C for copy
+        ctrl = bool(state & Gdk.ModifierType.CONTROL_MASK)
+        shift = bool(state & Gdk.ModifierType.SHIFT_MASK)
+        
+        if ctrl and shift and keyval == Gdk.KEY_C:
+            # Use the non-deprecated method for copying text to clipboard
+            self.terminal.copy_clipboard_format(Vte.Format.TEXT)
+            return True  # Event handled
+            
+        return False  # Event not handled, let VTE process it
 
     def on_settings_changed(self):
         """Handle settings changes"""

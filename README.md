@@ -42,7 +42,9 @@ Based on the POC code and the current state of the application, here's a plan to
 2. **Terminal Integration**
    - [X] Refine terminal content extraction
    - [X] Add Scrollbars to Terminal
-   - [ ] Refine Copy and Paste functionality (ctrl+shift+c and ctrl+shift+v)
+   - [X] Refine Copy and Paste functionality vor VTE Terminal (ctrl+shift+c and ctrl+shift+v)
+   - [ ] Add Zoom functionality to VTE
+   
 
    
 ### Phase 3: Advanced Features
