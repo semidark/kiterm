@@ -1055,7 +1055,7 @@ class AIPanelManager:
         code_scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
         
         # Calculate height based on content
-        line_count = code.count('\n')
+        line_count = code.count('\n')+1
         
         # Get font metrics to calculate line height
         context = code_view.get_pango_context()
@@ -1074,7 +1074,7 @@ class AIPanelManager:
         content_height = int(line_count * (line_height_pixels + padding_per_line))
         
         # Set a reasonable minimum height (for single line code)
-        min_height = int(line_height_pixels + 20)  # 20px for padding
+        min_height = int(line_height_pixels + 10)  # 10px for padding
         content_height = max(content_height, min_height)
         
         # Don't set max height - let it grow with content
