@@ -4,7 +4,6 @@ import os
 import time
 import re
 from gi.repository import Gtk, GLib, Pango, Gdk, Vte
-
 from api_handler import APIHandler
 from markdown_formatter import MarkdownFormatter
 
@@ -697,9 +696,7 @@ class AIPanelManager:
         """
         if not content:
             return ""
-            
-        import re
-        
+             
         # Step 1: Trim trailing whitespace at the end of the content
         content = content.rstrip()
         
