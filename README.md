@@ -49,6 +49,7 @@ Based on the POC code and the current state of the application, here's a plan to
    
 ### Phase 3: Advanced Features
 1. **Conversation Management**
+   - [X] Improve Markdown Rendering
    - [ ] Add context management
    - [ ] Save/load conversation history
    - [ ] Improve code block rendering with syntax highlighting
