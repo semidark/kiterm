@@ -488,6 +488,9 @@ class AIPanelManager:
         # Get terminal content for context
         terminal_content = self._get_terminal_content()
         
+        # Get conversation history
+        conversation_history = self.panels.get('conversation', [])
+        
         # Prepare for streaming if enabled
         if self.settings_manager.streaming_enabled:
             self._prepare_for_streaming()
@@ -498,7 +501,8 @@ class AIPanelManager:
             terminal_content=terminal_content,
             update_callback=self._update_streaming_text,
             complete_callback=self._on_response_complete,
-            error_callback=self._on_api_error
+            error_callback=self._on_api_error,
+            conversation_history=conversation_history
         )
     
     def _prepare_for_streaming(self):
@@ -679,6 +683,11 @@ class AIPanelManager:
                 
             # Use delayed scrolling after completion too
             self._delayed_scroll_to_bottom()
+            
+            # Add the completed response to the conversation history
+            # even though we didn't create a new UI element
+            if 'conversation' in self.panels and response_text:
+                self.panels['conversation'].append({"role": "assistant", "content": response_text})
     
     def _get_terminal_content(self):
         """Get the current content of the terminal"""
@@ -744,6 +753,12 @@ class AIPanelManager:
         if bold:
             header.set_markup(f"<b>{role.capitalize()}</b>")
         message_container.append(header)
+        
+        # Add to conversation history if it's a user, system, or assistant message (not error)
+        # Don't add empty or animation messages
+        if role in ('user', 'system', 'assistant') and text and not animate:
+            # Add message to conversation history for context
+            self.panels['conversation'].append({"role": role, "content": text})
         
         # Apply markdown formatting or special handling depending on role
         if role != 'user':
@@ -1217,13 +1232,17 @@ class AIPanelManager:
         # Get terminal content to include in the prompt
         terminal_content = self._get_terminal_content()
         
+        # Get conversation history
+        conversation_history = self.panels.get('conversation', [])
+        
         # Send to API handler
         self.api_handler.send_request(
             query=text,
             terminal_content=terminal_content,
             update_callback=self._update_streaming_text,
             complete_callback=self._on_response_complete,
-            error_callback=self._on_api_error
+            error_callback=self._on_api_error,
+            conversation_history=conversation_history
         )
 
     def _on_api_error(self, error_message):

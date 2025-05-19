@@ -51,7 +51,7 @@ class APIHandler:
             return True
         return False
     
-    def send_request(self, query, terminal_content, update_callback, complete_callback, error_callback):
+    def send_request(self, query, terminal_content, update_callback, complete_callback, error_callback, conversation_history=None):
         """Send a request to the API with callbacks for streaming updates and completion"""
         # Register the update callback
         self.register_update_callback(update_callback)
@@ -81,7 +81,7 @@ class APIHandler:
         # Start a thread to not block the UI
         thread = threading.Thread(
             target=self._send_query_thread,
-            args=(query, terminal_content, completion_wrapper, self._on_stream_start, error_wrapper)
+            args=(query, terminal_content, completion_wrapper, self._on_stream_start, error_wrapper, conversation_history)
         )
         thread.daemon = True  # Make thread daemon so it doesn't block app exit
         self.active_request = thread
@@ -91,7 +91,7 @@ class APIHandler:
         """Handle stream start"""
         print("Stream starting...")
     
-    def _send_query_thread(self, query, terminal_content, on_complete, on_stream_start=None, on_error=None):
+    def _send_query_thread(self, query, terminal_content, on_complete, on_stream_start=None, on_error=None, conversation_history=None):
         """Handle the query in a background thread"""
         try:
             # Get current settings
@@ -102,9 +102,9 @@ class APIHandler:
             
             # Define system prompt as a multiline text variable for better readability
             system_prompt = """You are an expert AI assistant in a terminal environment. Your goal is to provide concise, accurate, and actionable command-line assistance.
-You can see the terminal that the user is using and the user is able to execute commands you suggest directly in the terminal.
-- **Commands**: Provide directly runnable commands within triple backticks (```). Briefly explain their purpose and any important options.
-- **Codeblocks**: If the user asks for code or script, provide only the code in a codeblock without any additional explanation.(```).
+You can see the terminal that the user is using and the user is able to execute commands you suggest directly in that terminal.
+- **Commands**: Provide directly runnable commands within triple backticks (```<shelltype>\n). Briefly explain their purpose and any important options.
+- **Codeblocks**: If the user asks for code or script, provide only the code in a codeblock without any additional explanation.(```<shelltype>\n).
 - **Explanations**: Clearly explain terminal output, errors, and concepts. Offer solutions or next steps.
 - **Troubleshooting**: Help diagnose and solve issues. Suggest diagnostic commands if needed.
 - **Scripting**: Assist with generating or understanding small scripts (e.g., Bash, Python).
@@ -113,9 +113,15 @@ You can see the terminal that the user is using and the user is able to execute 
 
             # Prepare the prompt with system message and user query
             messages = [
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": f"Here is my terminal content:\n\n{terminal_content}\n\nMy question is: {query}"}
+                {"role": "system", "content": system_prompt}
             ]
+            
+            # Add conversation history if provided
+            if conversation_history and len(conversation_history) > 0:
+                messages.extend(conversation_history)
+            
+            # Add the current query as the last message
+            messages.append({"role": "user", "content": f"Here is my terminal content:\n\n{terminal_content}\n\nMy question is: {query}"})
             
             # Check if we need to adjust the URL for local LLMs like Ollama
             parsed_url = urlparse(api_url)
