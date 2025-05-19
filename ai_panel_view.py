@@ -77,29 +77,6 @@ class AIPanelView:
         header = self._create_header()
         panel.append(header)
         
-        # Terminal preview section (collapsible)
-        terminal_preview_expander = Gtk.Expander(label="Terminal Preview")
-        terminal_preview_expander.set_expanded(False)
-        
-        terminal_preview_scroll = Gtk.ScrolledWindow()
-        terminal_preview_scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
-        terminal_preview_scroll.set_min_content_height(100)
-        terminal_preview_scroll.set_max_content_height(200)
-        
-        terminal_preview_view = Gtk.TextView()
-        terminal_preview_view.set_editable(False)
-        terminal_preview_view.set_cursor_visible(False)
-        terminal_preview_view.set_wrap_mode(Gtk.WrapMode.CHAR)
-        terminal_preview_view.add_css_class("terminal-preview-content")
-        
-        # In GTK4, we use CSS classes instead of override_font
-        terminal_preview_view.add_css_class("monospace-text")
-        
-        terminal_preview_scroll.set_child(terminal_preview_view)
-        terminal_preview_expander.set_child(terminal_preview_scroll)
-        
-        panel.append(terminal_preview_expander)
-        
         # Create chat interface with proper conversation view
         chat_scroll = Gtk.ScrolledWindow()
         chat_scroll.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
@@ -213,8 +190,6 @@ class AIPanelView:
             'panel': panel,
             'chat_box': chat_box,
             'chat_scroll': chat_scroll,
-            'terminal_preview_view': terminal_preview_view,
-            'terminal_preview_expander': terminal_preview_expander,
             'query_entry': query_entry,
             'query_scroll': query_scroll,
             'send_button': send_button,
@@ -248,12 +223,6 @@ class AIPanelView:
         settings_button.connect("clicked", self._on_settings_clicked)
         header_box.append(settings_button)
         
-        # Refresh button
-        refresh_button = Gtk.Button.new_from_icon_name("view-refresh-symbolic")
-        refresh_button.set_tooltip_text("Refresh Terminal Preview")
-        refresh_button.connect("clicked", self._on_refresh_clicked)
-        header_box.append(refresh_button)
-        
         # Clear button
         clear_button = Gtk.Button.new_from_icon_name("edit-clear-symbolic")
         clear_button.set_tooltip_text("Clear Conversation")
@@ -265,10 +234,6 @@ class AIPanelView:
     def _on_settings_clicked(self, widget):
         """Forward settings button click to controller"""
         self.controller.on_settings_clicked()
-    
-    def _on_refresh_clicked(self, widget):
-        """Forward refresh button click to controller"""
-        self.controller.on_refresh_clicked()
     
     def _on_clear_clicked(self, widget):
         """Forward clear button click to controller"""
@@ -303,13 +268,6 @@ class AIPanelView:
         """Clear the input field"""
         buffer = self.components['query_entry'].get_buffer()
         buffer.set_text("")
-    
-    def update_terminal_preview(self, content):
-        """Update the terminal preview content"""
-        buffer = self.components['terminal_preview_view'].get_buffer()
-        buffer.set_text(content)
-        # Ensure terminal preview is visible
-        self.components['terminal_preview_expander'].set_expanded(True)
     
     def add_message_widget(self, message_widget):
         """Add a message widget to the chat box"""

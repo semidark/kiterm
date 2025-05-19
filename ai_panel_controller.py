@@ -99,16 +99,6 @@ class AIPanelController:
         )
         self.add_system_message(api_info)
     
-    def on_refresh_clicked(self):
-        """Handle refresh button click"""
-        print("Refresh button clicked")
-        
-        # Get terminal content using terminal interactor
-        terminal_content = self.terminal_interactor.get_terminal_content()
-        
-        # Update terminal preview via view
-        self.view.update_terminal_preview(terminal_content)
-    
     def on_clear_clicked(self):
         """Handle clear button click"""
         print("Clear button clicked")
