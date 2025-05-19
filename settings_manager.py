@@ -16,6 +16,7 @@ class SettingsManager:
         self.default_panel_width = 300  # Default width of the assistant panel in pixels
         self.streaming_enabled = True  # Enable streaming by default
         self.font_scale = 1.0  # Default terminal font scale
+        self.scrollback_lines = 1000  # Default scrollback buffer size
         
         # Define the settings file location
         self.config_dir = os.path.join(GLib.get_user_config_dir(), 'kiterm')
@@ -44,6 +45,7 @@ class SettingsManager:
                     self.default_panel_width = int(settings.get('panel_width', self.default_panel_width))
                     self.streaming_enabled = settings.get('streaming_enabled', self.streaming_enabled)
                     self.font_scale = float(settings.get('font_scale', self.font_scale))
+                    self.scrollback_lines = int(settings.get('scrollback_lines', self.scrollback_lines))
                     
                     # Convert string to boolean if needed
                     if isinstance(self.streaming_enabled, str):
@@ -63,7 +65,8 @@ class SettingsManager:
                 'model': self.model,
                 'panel_width': self.default_panel_width,
                 'streaming_enabled': self.streaming_enabled,
-                'font_scale': self.font_scale
+                'font_scale': self.font_scale,
+                'scrollback_lines': self.scrollback_lines
             }
             
             with open(self.settings_file, 'w') as f:
@@ -219,6 +222,24 @@ class SettingsManager:
         font_scale_help_label.set_halign(Gtk.Align.START)
         grid.attach(font_scale_help_label, 1, 11, 1, 1)
         
+        # Scrollback Buffer Size
+        scrollback_label = Gtk.Label(label="Scrollback Lines:")
+        scrollback_label.set_halign(Gtk.Align.START)
+        grid.attach(scrollback_label, 0, 12, 1, 1)
+        
+        scrollback_adjustment = Gtk.Adjustment(value=self.scrollback_lines, lower=100, upper=100000, step_increment=100, page_increment=1000, page_size=0)
+        scrollback_spin = Gtk.SpinButton()
+        scrollback_spin.set_adjustment(scrollback_adjustment)
+        scrollback_spin.set_numeric(True)
+        scrollback_spin.set_value(self.scrollback_lines)
+        grid.attach(scrollback_spin, 1, 12, 1, 1)
+        
+        # Help text for scrollback
+        scrollback_help_label = Gtk.Label()
+        scrollback_help_label.set_markup("<small>Number of lines to keep in terminal scrollback history</small>")
+        scrollback_help_label.set_halign(Gtk.Align.START)
+        grid.attach(scrollback_help_label, 1, 13, 1, 1)
+        
         content_area.append(grid)
         
         # In GTK4, we need to connect to signals instead of using run()
@@ -231,6 +252,7 @@ class SettingsManager:
                 self.default_panel_width = int(width_spin.get_value())
                 self.streaming_enabled = streaming_switch.get_active()
                 self.font_scale = float(font_scale_spin.get_value())
+                self.scrollback_lines = int(scrollback_spin.get_value())
                 
                 # Save to file
                 self.save_settings()

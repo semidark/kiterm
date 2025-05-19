@@ -21,8 +21,8 @@ class AIPanelController:
         # Create Markdown formatter
         self.markdown_formatter = MarkdownFormatter()
         
-        # Create terminal interactor
-        self.terminal_interactor = TerminalInteractor(terminal)
+        # Create terminal interactor with settings manager
+        self.terminal_interactor = TerminalInteractor(terminal, settings_manager)
         
         # Create chat message factory
         self.message_factory = ChatMessageFactory(self.markdown_formatter)

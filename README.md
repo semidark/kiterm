@@ -1,13 +1,12 @@
 # KIterm: GTK4 VTE Terminal with Integrated AI Assistant
 
-A Python application that displays a terminal using GTK4 and VTE, now featuring an integrated AI assistant panel.
 
 ## Features
 
-*   **Embedded VTE Terminal**: A fully functional terminal embedded within the GTK4 application.
+*   **Embedded VTE Terminal**: A fully functional terminal
 *   **Integrated AI Chat Panel**:
     *   Connects to Ollama, OpenAI, or other compatible Large Language Model (LLM) APIs.
-    *   Provides contextual assistance by using the current content of your terminal.
+    *   Provides contextual assistance by using the current content of your terminal and the chat history.
     *   Supports streaming responses for real-time interaction.
     *   Renders AI responses in Markdown for clear formatting (including code blocks, bold, italics, etc.).
     *   In-app settings panel to configure:
@@ -17,8 +16,7 @@ A Python application that displays a terminal using GTK4 and VTE, now featuring 
         *   AI panel width.
     *   Cancellable AI requests via a "Stop" button or the Escape key.
     *   Intelligent auto-scrolling that respects manual scrolling in the chat view.
-    *   Terminal preview within the AI panel.
-    *   Conversation clearing and settings refresh options.
+    *   Conversation clearing and.
 
 ## Implementation Plan
 
@@ -44,17 +42,18 @@ Based on the POC code and the current state of the application, here's a plan to
    - [X] Add Scrollbars to Terminal
    - [X] Refine Copy and Paste functionality vor VTE Terminal (ctrl+shift+c and ctrl+shift+v)
    - [X] Add Zoom functionality to VTE
-   
+   - [X] Make VTE Scrollback buffer size configurable
+   - [ ] Add Command generation Chat in VTE that allows the user to just generate a prompt directly to the terminal. It should use the current chat and Terminal content for the generation but directly output it to the VTE Terminal   
 
    
 ### Phase 3: Advanced Features
 1. **Conversation Management**
-   - [X] Improve Markdown Rendering
-   - [ ] Add context management
+   - [X] Improve regex Markdown Rendering with library 
+   - [ ] Display token usage (divided by Terminal / Chat / Prompt / Systemprompt)
    - [ ] Save/load conversation history
    - [ ] Improve code block rendering with syntax highlighting
    - [ ] Export conversations
-   - [ ] Add keyboard shortcuts
+   - [ ] Add keyboard shortcuts for Focus switching between chat and Terminal
    - [ ] Implement model selection
    - [ ] Handle API key securely
    - [ ] Add support for clickable links

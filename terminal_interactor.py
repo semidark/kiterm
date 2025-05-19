@@ -6,9 +6,10 @@ from gi.repository import Vte
 class TerminalInteractor:
     """Class to handle interactions with the VTE terminal"""
     
-    def __init__(self, terminal):
+    def __init__(self, terminal, settings_manager=None):
         """Initialize the terminal interactor"""
         self.terminal = terminal
+        self.settings_manager = settings_manager
 
     def get_terminal_content(self):
         """Get the current text content from the VTE terminal, including scrollback."""
@@ -17,10 +18,26 @@ class TerminalInteractor:
             vte = self.terminal
             
             try:
-                # Instead of using get_row_count(), use a very large number to ensure
-                # we capture the entire scrollback buffer regardless of window size
-                # VTE will automatically stop when it reaches the actual end of content
-                max_rows = 100000  # Large enough to capture any reasonable scrollback
+                # Get the terminal's scrollback buffer size from settings if available
+                # or use a reasonable default maximum
+                if self.settings_manager:
+                    max_rows = self.settings_manager.scrollback_lines
+                else:
+                    # If settings not available, use the terminal's current scrollback setting
+                    # or fall back to a default value
+                    try:
+                        max_rows = vte.get_scrollback_lines()
+                    except Exception:
+                        max_rows = 1000  # Default fallback
+                
+                # Add a buffer to account for visible rows
+                try:
+                    visible_rows = vte.get_row_count()
+                    max_rows += visible_rows
+                except Exception:
+                    # Add a reasonable buffer if we can't get the visible rows
+                    max_rows += 100
+                
                 cols = vte.get_column_count()
                 
                 # Using get_text_range_format to fetch the entire terminal content
@@ -29,7 +46,7 @@ class TerminalInteractor:
                     Vte.Format.TEXT,  # Plain text format
                     0,                # start_row: beginning of scrollback
                     0,                # start_col: first column
-                    max_rows,         # end_row: using large number instead of row_count
+                    max_rows,         # end_row: using configured scrollback size
                     cols              # end_col: full content width
                 )
                 

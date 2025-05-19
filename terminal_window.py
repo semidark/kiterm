@@ -33,6 +33,9 @@ class TerminalWindow(Gtk.ApplicationWindow):
         # Terminal setup
         self.terminal = Vte.Terminal()
         
+        # Configure scrollback buffer size from settings
+        self.terminal.set_scrollback_lines(self.settings_manager.scrollback_lines)
+        
         # Create a ScrolledWindow to contain the terminal
         self.scrolled_window = Gtk.ScrolledWindow()
         self.scrolled_window.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
