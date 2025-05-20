@@ -2,28 +2,26 @@
 
 ## Features
 
-*   **Embedded VTE Terminal**: A fully functional terminal
-*   **Integrated AI Chat Panel**:
-    *   Connects to Ollama, OpenAI, or other compatible Large Language Model (LLM) APIs.
-    *   Provides contextual assistance by using the current content of your terminal and the chat history.
-    *   Supports streaming responses for real-time interaction.
-    *   Renders AI responses in Markdown for clear formatting (including code blocks, bold, italics, etc.).
-    *   In-app settings panel to configure:
-        *   API Endpoint URL.
-        *   Model name.
-        *   Streaming mode (enable/disable).
-        *   AI panel width.
-    *   Cancellable AI requests via a "Stop" button or the Escape key.
-    *   Intelligent auto-scrolling that respects manual scrolling in the chat view.
-    *   Conversation clearing and.
-*   **Command Generator**:
-    *   Dedicated input field below the terminal for generating shell commands.
-    *   Generate commands from natural language descriptions (e.g., "find all PDF files in the current directory").
-    *   Uses both terminal content and chat history as context for more relevant commands.
-    *   Inserts generated commands directly into the terminal without executing them.
-    *   Allows users to review and edit commands before execution.
-    *   Quick focus switching with Ctrl+Shift+G keyboard shortcut.
-    *   Built-in "Explain Command" feature to understand what commands do before executing them.
+*   **🚀 Next-Gen Terminal Experience**: KIterm isn't just a terminal; it's your supercharged command-line companion, seamlessly embedding a powerful VTE terminal.
+*   **🧠 Integrated AI Co-pilot**:
+    *   **Universal LLM Compatibility**: Effortlessly connect to Ollama, OpenAI, or your preferred Large Language Model API.
+    *   **Context-Aware Assistance**: Get truly relevant help! The AI understands your current terminal session and chat history to provide pinpoint suggestions.
+    *   **Real-time AI Dialogue**: Experience fluid, streaming responses for a natural and interactive chat.
+    *   **Crystal-Clear Markdown Output**: AI responses are beautifully formatted with Markdown, making code blocks, emphasis, and lists easy to read.
+    *   **Personalized AI Settings**: Tailor your experience with an intuitive in-app panel to configure:
+        *   Your chosen API Endpoint URL.
+        *   The specific AI Model you want to use.
+        *   Toggle for streaming responses.
+        *   Adjustable AI panel width for optimal screen real estate.
+    *   **Instant Control**: Cancel AI requests on the fly with a dedicated "Stop" button or a simple Escape key press.
+    *   **Smart Scrolling**: The chat view intelligently auto-scrolls but respects your manual scrolling, so you never lose your place.
+    *   **Effortless Conversation Management**: Easily clear conversations and start fresh.
+*   **✨ AI-Powered Command Generator**:
+    *   **Intuitive Command Creation**: Type what you want to do in plain English (e.g., "find all PDF files in my downloads folder from last week") directly below your terminal.
+    *   **Contextual Command Genius**: The generator leverages your terminal output and ongoing chat to craft highly relevant and accurate shell commands.
+    *   **Safe & Editable Commands**: Generated commands are inserted directly into your terminal, ready for your review and modification *before* execution.
+    *   **Lightning-Fast Focus**: Jump to the command generator instantly with the `Ctrl+Shift+G` shortcut.
+    *   **Demystify Commands**: Got a complex command? Use the built-in "Explain Command" feature to understand its function before you hit Enter.
 
 ## Implementation Plan
 
