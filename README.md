@@ -23,6 +23,12 @@
     *   **Lightning-Fast Focus**: Jump to the command generator instantly with the `Ctrl+Shift+G` shortcut.
     *   **Demystify Commands**: Got a complex command? Use the built-in "Explain Command" feature to understand its function before you hit Enter.
 
+
+![Terminal Screenshot](./images/terminal.png)
+
+
+
+
 ## Implementation Plan
 
 Here's the implementation plan for API integration and chat functionality enhancements:
