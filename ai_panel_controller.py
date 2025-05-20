@@ -9,6 +9,7 @@ from terminal_interactor import TerminalInteractor
 from chat_message_factory import ChatMessageFactory
 from api_handler import APIHandler
 from markdown_formatter import MarkdownFormatter
+from command_generator import CommandGenerator
 
 class AIPanelController:
     """Controller class for the AI chat panel"""
@@ -36,8 +37,8 @@ class AIPanelController:
         # Conversation history
         self.conversation = []
         
-        # Command generation state
-        self.last_generated_command = None
+        # Create command generator
+        self.command_generator = CommandGenerator(self)
         
         # Streaming state
         self.stream_active = False
@@ -360,6 +361,15 @@ class AIPanelController:
         if self.typing_animation_id:
             GLib.source_remove(self.typing_animation_id)
             self.typing_animation_id = None
+            
+        # Ensure the text of the current_response_info (if any) is cleared
+        # if it was only showing the "Thinking..." animation.
+        if self.current_response_info and 'buffer' in self.current_response_info:
+            buffer = self.current_response_info['buffer']
+            # Check if it's likely just the thinking animation text
+            current_text = buffer.get_text(buffer.get_start_iter(), buffer.get_end_iter(), False)
+            if "Thinking" in current_text and len(current_text) < 15: # Heuristic
+                buffer.set_text("")
     
     def _update_streaming_text(self, text):
         """Update the streaming text in the UI with rate limiting"""
@@ -553,211 +563,17 @@ class AIPanelController:
     
     def handle_command_generation(self, command_request):
         """Handle a command generation request from the command generator input"""
-        if not command_request:
-            return
-            
-        print(f"Generating command for request: {command_request}")
-        
-        # Get terminal content for context
-        terminal_content = self.terminal_interactor.get_terminal_content()
-        
-        # Prepare a system prompt specifically for command generation
-        command_gen_system_prompt = (
-            "You are a helpful AI assistant that generates shell commands based on user requests. "
-            "The user is working in a Linux terminal environment. "
-            "Generate ONLY the exact shell command that fulfills the user's request. "
-            "Do not include explanations, markdown formatting, or code blocks. "
-            "Return ONLY the raw command text that can be directly executed in the terminal. "
-            "IMPORTANT SECURITY RULES:\n"
-            "1. NEVER include newline characters (\\n) or carriage returns (\\r) in commands\n"
-            "2. Prefer to use a SINGLE command rather than chained commands (with ; or &&)\n"
-            "3. Avoid command substitution with backticks (`) if possible\n"
-            "4. Avoid command injection risks\n"
-            "If you cannot generate a suitable command, respond with 'ERROR: ' followed by a brief explanation."
-        )
-        
-        # Add a message in the chat panel indicating we're generating a command
-        self.add_system_message(f"Generating command: {command_request}")
-        
-        # Toggle buttons and show typing indicator
-        self.view.set_send_button_visible(False)
-        self.view.set_stop_button_visible(True)
-        
-        # Prepare for streaming if enabled
-        if self.settings_manager.streaming_enabled:
-            self._prepare_for_streaming()
-        
-        # Set stream active flag
-        self.stream_active = True
-        
-        # Modify the query to instruct the AI to just provide the command
-        enhanced_query = f"Generate ONLY a shell command for: {command_request}. Return ONLY the command, no explanations or formatting."
-        
-        # Send the request
-        self.api_handler.send_request(
-            query=enhanced_query,
-            terminal_content=terminal_content,
-            update_callback=self._update_command_streaming_text,
-            complete_callback=self._on_command_generation_complete,
-            error_callback=self._on_command_generation_error,
-            # TODO: Add conversation history Command generation is NOT a 
-            # focused task, and general history is needed for better results
-            conversation_history=None,  
-            system_prompt_override=command_gen_system_prompt
-        )
+        # Delegate to the command generator
+        self.command_generator.handle_command_generation(command_request)
     
-    def _update_command_streaming_text(self, text):
-        """Handle streaming updates for command generation"""
-        # Similar to regular streaming but don't show in chat until complete
-        self.pending_stream_text = text
-        
-        # Check if a timer is already running
-        if self.stream_update_timeout_id is None:
-            # Start a timer to apply the update
-            self.stream_update_timeout_id = GLib.timeout_add(
-                self.stream_update_interval, 
-                self._apply_command_streaming_update
-            )
-    
-    def _apply_command_streaming_update(self):
-        """Apply the streaming update for command generation"""
-        # Reset the timer ID
-        self.stream_update_timeout_id = None
-        
-        # Check if we have pending text
-        if self.pending_stream_text is not None:
-            # Store the pending text but don't display it yet
-            self.last_generated_command = self.pending_stream_text
-            
-            # Reset the pending text
-            self.pending_stream_text = None
-        
-        # Return False to stop the timer
-        return False
-    
-    def _on_command_generation_complete(self, response_text):
-        """Handle command generation completion"""
-        # Stop streaming and animations
-        self.stream_active = False
-        self._stop_typing_animation()
-        
-        # Store the generated command
-        self.last_generated_command = response_text.strip()
-        
-        # Reset UI state
-        self.view.set_send_button_visible(True)
-        self.view.set_stop_button_visible(False)
-        
-        if self.last_generated_command.startswith("ERROR:"):
-            # Handle error case - just show the error message
-            error_message = self.last_generated_command[6:].strip()  # Remove "ERROR: " prefix
-            self.add_system_message(f"Command generation failed: {error_message}")
-        else:
-            # Insert the command into the terminal
-            success = self.terminal_interactor.insert_command(self.last_generated_command)
-            
-            if success:
-                # Add a message to the chat with the generated command and an explain button
-                message = f"Generated command: `{self.last_generated_command}`\n\nCommand has been inserted into terminal. You can edit it before pressing Enter to execute."
-                message_widget = self.message_factory.create_message_widget(
-                    text=message, 
-                    role="assistant",
-                    add_explain_button=True,
-                    explain_callback=self._on_explain_command_clicked
-                )
-                
-                # Add widget to the chat box - extract the container from the returned dictionary
-                if isinstance(message_widget, dict) and 'container' in message_widget:
-                    self.view.add_message_widget(message_widget['container'])
-                else:
-                    print("Error: Expected a dictionary with 'container' key from create_message_widget")
-                
-                # Add command to history but with a special meta flag
-                self.conversation.append({
-                    "role": "assistant",
-                    "content": self.last_generated_command,
-                    "meta": {"type": "generated_command"}
-                })
-            else:
-                # Command was rejected due to security issues, provide a more detailed error
-                rejection_reason = "The generated command contains potentially unsafe elements (like newlines or command chaining) that could lead to unintended execution."
-                safe_display_command = self.last_generated_command.replace('\n', '\\n').replace('\r', '\\r')
-                
-                rejection_message = (
-                    f"⚠️ Command rejected for security reasons\n\n"
-                    f"Generated command: `{safe_display_command}`\n\n"
-                    f"{rejection_reason}\n\n"
-                    f"Try asking for a simpler command or specify more clearly what you need."
-                )
-                
-                # Add rejection message with explain button so the user can still understand what the command would do
-                message_widget = self.message_factory.create_message_widget(
-                    text=rejection_message, 
-                    role="error",
-                    add_explain_button=True,
-                    explain_callback=self._on_explain_command_clicked
-                )
-                
-                # Add widget to the chat box
-                if isinstance(message_widget, dict) and 'container' in message_widget:
-                    self.view.add_message_widget(message_widget['container'])
-                else:
-                    print("Error: Expected a dictionary with 'container' key from create_message_widget")
-    
-    def _on_command_generation_error(self, error_message):
-        """Handle command generation errors"""
-        # Stop streaming and animations
-        self.stream_active = False
-        self._stop_typing_animation()
-        
-        # Reset UI state
-        self.view.set_send_button_visible(True)
-        self.view.set_stop_button_visible(False)
-        
-        # Show error message
-        self.add_system_message(f"Command generation error: {error_message}")
-    
-    def _on_explain_command_clicked(self, button, command=None):
-        """Handle request to explain the last generated command"""
-        # Use provided command or last generated command
-        command_to_explain = command if command else self.last_generated_command
-        
-        if not command_to_explain:
-            self.add_system_message("No command available to explain.")
-            return
-        
-        # Create a system prompt specifically for command explanation
-        explanation_system_prompt = (
-            "You are a helpful AI assistant tasked with explaining shell commands. "
-            "Provide a clear, concise explanation of what the command does, breaking down each component. "
-            "Include information about options, flags, and potential side effects or risks. "
-            "Format your explanation with clear section headers and bullet points where appropriate."
-        )
-        
-        # Create a query for the explanation
-        query = f"Explain this command in detail: {command_to_explain}"
-        
-        # Add a message to indicate we're generating an explanation
-        self.add_system_message(f"Generating explanation for: {command_to_explain}")
-        
-        # Toggle buttons and show typing indicator
-        self.view.set_send_button_visible(False)
-        self.view.set_stop_button_visible(True)
-        
-        # Prepare for streaming if enabled
-        if self.settings_manager.streaming_enabled:
-            self._prepare_for_streaming()
-        
-        # Set stream active flag
-        self.stream_active = True
-        
-        # Send the request
-        self.api_handler.send_request(
-            query=query,
-            terminal_content="",  # Don't need terminal content for explanation
-            update_callback=self._update_streaming_text,
-            complete_callback=self._on_response_complete,
-            error_callback=self._on_api_error,
-            conversation_history=None,  # Explanation is a focused task
-            system_prompt_override=explanation_system_prompt
-        ) 
+    def clear_current_streaming_message(self):
+        """Removes the temporary message widget used for streaming/thinking indication."""
+        if self.current_response_info and 'container' in self.current_response_info:
+            widget_to_remove = self.current_response_info['container']
+            if widget_to_remove and widget_to_remove.get_parent():
+                parent = widget_to_remove.get_parent()
+                if hasattr(parent, 'remove'):
+                    parent.remove(widget_to_remove)
+                elif self.debug_mode:
+                    print(f"Debug: Parent of widget to remove does not have remove method: {type(parent)}")
+        self.current_response_info = None 
