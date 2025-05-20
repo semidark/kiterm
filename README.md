@@ -1,9 +1,9 @@
-# KIterm: GTK4 VTE Terminal with Integrated AI Assistant
+# KIterm: GTK4 based Terminal with Integrated AI Assistant
 
 ## Features
 
-*   **🚀 Next-Gen Terminal Experience**: KIterm isn't just a terminal; it's your supercharged command-line companion, seamlessly embedding a powerful VTE terminal.
-*   **🧠 Integrated AI Co-pilot**:
+*   **🚀 Next-Gen Terminal Experience**: KIterm isn't just a terminal; it's your supercharged command-line companion, seamlessly embedding a powerful VTE based terminal.
+*   **🧠 Integrated AI Assistant**:
     *   **Universal LLM Compatibility**: Effortlessly connect to Ollama, OpenAI, or your preferred Large Language Model API.
     *   **Context-Aware Assistance**: Get truly relevant help! The AI understands your current terminal session and chat history to provide pinpoint suggestions.
     *   **Real-time AI Dialogue**: Experience fluid, streaming responses for a natural and interactive chat.
@@ -25,7 +25,7 @@
 
 ## Implementation Plan
 
-Based on the POC code and the current state of the application, here's a plan to implement the API calls and enhance the chat functionality:
+Here's the implementation plan for API integration and chat functionality enhancements:
 
 ### Phase 1: API Integration
 1. **Create API Handler**
@@ -65,6 +65,8 @@ Based on the POC code and the current state of the application, here's a plan to
    - [ ] Handle API key securely
    - [ ] Add support for clickable links
    - [ ] Add Tabs to have multiple Terminals availible. Just like any modern Terminal app
+   - [ ] Make interface pretty
+  
 
 ## Prerequisites
 
