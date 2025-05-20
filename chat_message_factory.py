@@ -18,22 +18,24 @@ class ChatMessageFactory:
         """Set the parent window for dialogs"""
         self.parent_window = parent_window
     
-    def create_message_widget(self, role, text, callbacks=None, animate=False, bold=False):
+    def create_message_widget(self, text, role, callbacks=None, animate=False, bold=False, add_explain_button=False, explain_callback=None):
         """
         Create a message widget for the chat panel
         
         Args:
-            role (str): The role of the message sender ('user', 'assistant', 'system', 'error')
             text (str): The message text content
+            role (str): The role of the message sender ('user', 'assistant', 'system', 'error')
             callbacks (dict, optional): Callbacks for code block actions
                 - 'execute_callback': For executing code in the terminal
                 - 'copy_callback': For copying to clipboard (optional, internal implementation used if None)
                 - 'save_callback': For saving to file (optional, internal implementation used if None)
             animate (bool, optional): Whether to animate the message (for typing effect)
             bold (bool, optional): Whether to bold the role label
+            add_explain_button (bool, optional): Whether to add an "Explain" button for command
+            explain_callback (callable, optional): Callback for explain button
             
         Returns:
-            Gtk.Box: The message widget
+            Gtk.Box: The message widget or dict with container, buffer, and text_view for animated messages
         """
         if role not in ('user', 'assistant', 'system', 'error'):
             print(f"Invalid role: {role}")
@@ -252,6 +254,37 @@ class ChatMessageFactory:
             content_buffer = content_view.get_buffer()
             content_buffer.set_text(text)
             message_container.append(content_view)
+
+        # Add Explain button for generated commands if requested
+        if add_explain_button and role == 'assistant' and explain_callback:
+            # Extract command from the message text if it contains one
+            command = None
+            if '`' in text:
+                # Look for a command between backticks
+                match = re.search(r'`(.*?)`', text)
+                if match:
+                    command = match.group(1)
+            
+            # Create button container
+            button_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=5)
+            button_box.set_halign(Gtk.Align.END)
+            button_box.set_margin_top(5)
+            button_box.set_margin_bottom(5)
+            button_box.set_margin_end(10)
+            
+            # Create the explain button
+            explain_button = Gtk.Button.new_with_label("Explain Command")
+            explain_button.add_css_class("code-action-button")
+            
+            # Connect the callback with the command as data
+            if command:
+                explain_button.connect("clicked", explain_callback, command)
+            else:
+                # If no command extracted, just call the callback with no command
+                explain_button.connect("clicked", explain_callback)
+            
+            button_box.append(explain_button)
+            message_container.append(button_box)
 
         return {'container': message_container}
     

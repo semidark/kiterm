@@ -202,4 +202,28 @@ paned > separator {
 
 .resize-handle:hover {
     background-color: alpha(@theme_selected_bg_color, 0.4);
+}
+
+/* Command Generator styling */
+.command-generator-box {
+    border-top: 1px solid alpha(@borders, 0.5);
+    background-color: alpha(@theme_bg_color, 0.7);
+}
+
+.command-generator-entry {
+    margin: 5px;
+    border-radius: 4px;
+    background-color: alpha(@theme_base_color, 0.8);
+    border: 1px solid alpha(@borders, 0.5);
+    transition: all 200ms ease-in-out;
+}
+
+.command-generator-entry:focus {
+    background-color: @theme_base_color;
+    border-color: @theme_selected_bg_color;
+    box-shadow: 0 0 0 1px alpha(@theme_selected_bg_color, 0.3);
+}
+
+.command-generator-entry:hover:not(:focus) {
+    border-color: alpha(@theme_selected_bg_color, 0.5);
 } 

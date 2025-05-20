@@ -1,6 +1,5 @@
 # KIterm: GTK4 VTE Terminal with Integrated AI Assistant
 
-
 ## Features
 
 *   **Embedded VTE Terminal**: A fully functional terminal
@@ -17,6 +16,14 @@
     *   Cancellable AI requests via a "Stop" button or the Escape key.
     *   Intelligent auto-scrolling that respects manual scrolling in the chat view.
     *   Conversation clearing and.
+*   **Command Generator**:
+    *   Dedicated input field below the terminal for generating shell commands.
+    *   Generate commands from natural language descriptions (e.g., "find all PDF files in the current directory").
+    *   Uses both terminal content and chat history as context for more relevant commands.
+    *   Inserts generated commands directly into the terminal without executing them.
+    *   Allows users to review and edit commands before execution.
+    *   Quick focus switching with Ctrl+Shift+G keyboard shortcut.
+    *   Built-in "Explain Command" feature to understand what commands do before executing them.
 
 ## Implementation Plan
 
@@ -43,20 +50,23 @@ Based on the POC code and the current state of the application, here's a plan to
    - [X] Refine Copy and Paste functionality vor VTE Terminal (ctrl+shift+c and ctrl+shift+v)
    - [X] Add Zoom functionality to VTE
    - [X] Make VTE Scrollback buffer size configurable
-   - [ ] Add Command generation Chat in VTE that allows the user to just generate a prompt directly to the terminal. It should use the current chat and Terminal content for the generation but directly output it to the VTE Terminal   
+   - [X] Add Command generation Chatbox to VTE that allows the user to generate a prompt directly to the terminal.
+   - [ ] Always display Scrollbar in VTE since it is an indicator how much content is send to the LLM
 
    
 ### Phase 3: Advanced Features
 1. **Conversation Management**
    - [X] Improve regex Markdown Rendering with library 
+   - [ ] Autmatic System Exploration script. Identifies what kind of shell we are in and if we have admin/root rights. This information is then used for Command Generation Feature and as guidance in the AI Chat 
+   - [ ] Add keyboard shortcuts for Focus switching between chat and Terminal
    - [ ] Display token usage (divided by Terminal / Chat / Prompt / Systemprompt)
    - [ ] Save/load conversation history
    - [ ] Improve code block rendering with syntax highlighting
    - [ ] Export conversations
-   - [ ] Add keyboard shortcuts for Focus switching between chat and Terminal
    - [ ] Implement model selection
    - [ ] Handle API key securely
    - [ ] Add support for clickable links
+   - [ ] Add Tabs to have multiple Terminals availible. Just like any modern Terminal app
 
 ## Prerequisites
 
@@ -111,6 +121,7 @@ KIterm supports the following keyboard shortcuts for the terminal:
 * **Ctrl+Plus (+)**: Zoom in (increase font size)
 * **Ctrl+Minus (-)**: Zoom out (decrease font size)
 * **Ctrl+0**: Reset zoom to default font size
+* **Ctrl+Shift+G**: Toggle focus between terminal and command generator
 
 ### Configuring the AI Assistant
 
@@ -118,6 +129,15 @@ KIterm supports the following keyboard shortcuts for the terminal:
 *   **API URL**:
     *   For local Ollama: `http://localhost:11434` (the application will auto-append `/v1/chat/completions`).
     *   For OpenAI: `https://api.openai.com/v1/chat/completions`.
-*   **Model**: Enter the name of the model you wish to use (e.g., `llama3`, `gpt-4o`, `qwen2.5-coder:32b`).
+*   **Model**: Enter the name of the model you wish to use (e.g., `gpt-4.1-nano`, `qwen2.5-coder:32b`).
 *   **API Key**: Required for services like OpenAI.
 *   Adjust other settings like streaming and panel width as needed. 
+
+### Using the Command Generator
+
+1. Focus the command input field by pressing **Ctrl+Shift+G**
+2. Enter a natural language description of the command you need (e.g., "find all files modified in the last 24 hours")
+3. Press **Enter** to generate the command
+4. The command will be inserted into the terminal prompt without executing it
+5. Review or edit the command as needed, then press **Enter** in the terminal to execute
+6. Click **Explain Command** in the AI panel to get a detailed explanation of what the command does 

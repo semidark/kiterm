@@ -113,6 +113,88 @@ class TerminalInteractor:
         
         return content
     
+    def insert_command(self, command):
+        """
+        Insert command text into terminal without executing it.
+        This simulates typing the command but does not press Enter.
+        """
+        try:
+            if not command:
+                return False
+
+            # Clean the command by removing comments and checking for security issues
+            clean_command = self._sanitize_command(command)
+            
+            # If sanitization returned None, the command was rejected
+            if clean_command is None:
+                print("Command rejected: Contains multiple lines or other security issues")
+                return False
+
+            # Use feed_child to insert the command at the cursor position
+            # This inserts the text as if typed but doesn't execute it
+            self.terminal.feed_child(clean_command.encode())
+            return True
+        except Exception as e:
+            print(f"Error inserting command in terminal: {str(e)}")
+            return False
+            
+    def _sanitize_command(self, command):
+        """
+        Sanitize a command for safe insertion into the terminal.
+        
+        This method:
+        1. Removes comments (# in shell commands)
+        2. Removes newline characters
+        3. Rejects multi-line commands
+        4. Checks for other potentially dangerous patterns
+        
+        Returns:
+            str: The sanitized command, or None if the command is rejected
+        """
+        if not command:
+            return None
+            
+        # Check if command contains multiple lines (this is a security risk)
+        if '\n' in command or '\r' in command:
+            print("Security warning: Command contains newlines, which could lead to unintended execution")
+            return None
+            
+        # Remove comments - this matches # and anything after it, unless the # is escaped or in quotes
+        # This regex is a simplified version and might not catch all edge cases
+        # It handles basic shell comments that start with # and aren't in quotes
+        command = re.sub(r'(?<![\\\'"])#.*$', '', command)
+        
+        # Remove leading/trailing whitespace
+        command = command.strip()
+        
+        # Check for other potential security issues
+        # For example, commands containing certain dangerous sequences
+        dangerous_patterns = [
+            ';',            # Command separator
+            '&&',           # Command chaining
+            '||',           # Command chaining
+            '`',            # Command substitution
+            '$(',           # Command substitution
+            '$((',          # Arithmetic expansion
+            '>${',          # Output redirection to variable
+            '>$((',         # Output redirection to command substitution
+            '| base64',     # Encoding tricks
+            'eval',         # Evaluating strings as code
+            'exec',         # Replacing shell with another process
+            'curl | bash',  # Piping remote content to shell
+            'wget | bash',  # Piping remote content to shell
+        ]
+        
+        # Don't outright reject these patterns as they might be legitimate
+        # But log a warning about their potential risks
+        for pattern in dangerous_patterns:
+            if pattern in command:
+                print(f"Warning: Command contains potentially risky pattern: '{pattern}'")
+                # We don't return None here as these patterns may be legitimate in some contexts
+                # But we log warnings to help users be cautious
+        
+        return command
+    
     def execute_in_terminal(self, code):
         """Execute code in the terminal"""
         try:

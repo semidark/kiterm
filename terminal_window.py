@@ -26,6 +26,9 @@ class TerminalWindow(Gtk.ApplicationWindow):
         self.set_default_size(800, 500)
         self.set_title("KIterm")
 
+        # Create a vertical box for terminal area with command generator
+        self.terminal_area = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+        
         # Create a horizontal paned container
         self.paned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL)
         self.set_child(self.paned)
@@ -41,9 +44,35 @@ class TerminalWindow(Gtk.ApplicationWindow):
         self.scrolled_window.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
         self.scrolled_window.set_child(self.terminal)
         self.scrolled_window.add_css_class("terminal-scrolled-window")
+        self.scrolled_window.set_vexpand(True)
         
-        # Add the scrolled window to the paned container instead of the terminal directly
-        self.paned.set_start_child(self.scrolled_window)
+        # Add the terminal to the terminal area
+        self.terminal_area.append(self.scrolled_window)
+        
+        # Add command generator input
+        self.command_generator_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=5)
+        self.command_generator_box.set_margin_start(5)
+        self.command_generator_box.set_margin_end(5)
+        self.command_generator_box.set_margin_top(5)
+        self.command_generator_box.set_margin_bottom(5)
+        self.command_generator_box.add_css_class("command-generator-box")
+        
+        self.command_generator_entry = Gtk.Entry()
+        self.command_generator_entry.set_placeholder_text("Describe command to generate (Ctrl+Shift+G)...")
+        self.command_generator_entry.set_hexpand(True)
+        self.command_generator_entry.connect("activate", self._on_command_generator_activate)
+        self.command_generator_entry.add_css_class("command-generator-entry")
+        self.command_generator_box.append(self.command_generator_entry)
+        
+        # Add a label to explain the command generator
+        command_help_button = Gtk.Button.new_from_icon_name("help-about-symbolic")
+        command_help_button.set_tooltip_text("Generate shell commands using AI. Type a description and press Enter.")
+        self.command_generator_box.append(command_help_button)
+        
+        self.terminal_area.append(self.command_generator_box)
+        
+        # Add the terminal area to the paned container
+        self.paned.set_start_child(self.terminal_area)
         self.paned.set_resize_start_child(True)
         
         # Create the AI Chat panel using our panel controller with settings
@@ -66,11 +95,13 @@ class TerminalWindow(Gtk.ApplicationWindow):
         font_desc = Pango.FontDescription.from_string("MesloLGS NF Regular 12")
         self.terminal.set_font(font_desc)
 
-
         # GTK4 way: Add key event controller for keyboard shortcuts
         key_controller = Gtk.EventControllerKey()
         key_controller.connect("key-pressed", self.on_key_pressed)
         self.terminal.add_controller(key_controller)
+        
+        # Add shortcut for toggling focus between terminal and command generator
+        self._setup_keyboard_shortcuts()
 
         # Spawn a shell
         # Determine the default shell
@@ -108,6 +139,44 @@ class TerminalWindow(Gtk.ApplicationWindow):
         
         # Register settings change handler
         self.settings_manager.register_settings_change_callback(self.on_settings_changed)
+
+    def _setup_keyboard_shortcuts(self):
+        """Set up keyboard shortcuts for the window"""
+        # Create a shortcut controller
+        shortcut_controller = Gtk.ShortcutController()
+        shortcut_controller.set_scope(Gtk.ShortcutScope.GLOBAL)
+        
+        # Toggle focus between terminal and command generator (Ctrl+Shift+G)
+        # Using a KeyvalTrigger instead of parse method
+        toggle_shortcut = Gtk.Shortcut.new(
+            Gtk.KeyvalTrigger.new(Gdk.KEY_g, Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.SHIFT_MASK),
+            Gtk.CallbackAction.new(self._toggle_focus_callback)
+        )
+        shortcut_controller.add_shortcut(toggle_shortcut)
+        
+        # Add the controller to the window
+        self.add_controller(shortcut_controller)
+    
+    def _toggle_focus_callback(self, widget, args):
+        """Toggle focus between terminal and command generator entry"""
+        # Check if terminal has focus
+        if self.terminal.has_focus():
+            self.command_generator_entry.grab_focus()
+        else:
+            # If terminal doesn't have focus, give it focus
+            self.terminal.grab_focus()
+        return True
+    
+    def _on_command_generator_activate(self, entry):
+        """Handle command generator entry activation (Enter key)"""
+        command_request = entry.get_text()
+        if command_request and self.ai_panel_controller:
+            # Clear the entry
+            entry.set_text("")
+            # Process the command generation request
+            self.ai_panel_controller.handle_command_generation(command_request)
+        elif not self.ai_panel_controller:
+            print("AI Panel Controller not available")
 
     def on_key_pressed(self, controller, keyval, keycode, state):
         """Handles key press events on the VTE Terminal using GTK4's event controller."""
