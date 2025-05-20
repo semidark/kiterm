@@ -3,7 +3,7 @@
 import re
 from gi.repository import Vte
 
-class TerminalInteractor:
+class AiTerminalInteractor:
     """Class to handle interactions with the VTE terminal"""
     
     def __init__(self, terminal, settings_manager=None):

@@ -5,7 +5,7 @@ import time
 from gi.repository import Gtk, GLib, Gdk
 
 from ai_panel_view import AIPanelView
-from terminal_interactor import TerminalInteractor
+from ai_terminal_interactor import AiTerminalInteractor
 from chat_message_factory import ChatMessageFactory
 from api_handler import APIHandler
 from markdown_formatter import MarkdownFormatter
@@ -23,7 +23,7 @@ class AIPanelController:
         self.markdown_formatter = MarkdownFormatter()
         
         # Create terminal interactor with settings manager
-        self.terminal_interactor = TerminalInteractor(terminal, settings_manager)
+        self.ai_terminal_interactor = AiTerminalInteractor(terminal, settings_manager)
         
         # Create chat message factory
         self.message_factory = ChatMessageFactory(self.markdown_formatter)
@@ -225,7 +225,7 @@ class AIPanelController:
         self.view.set_stop_button_visible(True)
         
         # Get terminal content for context
-        terminal_content = self.terminal_interactor.get_terminal_content()
+        terminal_content = self.ai_terminal_interactor.get_terminal_content()
         
         # Set stream active flag
         self.stream_active = True
@@ -540,7 +540,7 @@ class AIPanelController:
     
     def _execute_code_in_terminal(self, code):
         """Execute code in the terminal"""
-        success = self.terminal_interactor.execute_in_terminal(code)
+        success = self.ai_terminal_interactor.execute_in_terminal(code)
         if success:
             self.view.show_notification("Code executed in terminal")
         else:

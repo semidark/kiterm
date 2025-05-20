@@ -7,7 +7,7 @@ class CommandGenerator:
     def __init__(self, panel_controller):
         self.panel_controller = panel_controller
         self.api_handler = panel_controller.api_handler
-        self.terminal_interactor = panel_controller.terminal_interactor
+        self.ai_terminal_interactor = panel_controller.ai_terminal_interactor
         self.view = panel_controller.view
         self.message_factory = panel_controller.message_factory
         self.settings_manager = panel_controller.settings_manager
@@ -24,7 +24,7 @@ class CommandGenerator:
             
         print(f"CommandGenerator: Generating command for request: {command_request}")
         
-        terminal_content = self.terminal_interactor.get_terminal_content()
+        terminal_content = self.ai_terminal_interactor.get_terminal_content()
         
         command_gen_system_prompt = (
             "You are a helpful AI assistant that generates shell commands based on user requests. "
@@ -101,7 +101,7 @@ class CommandGenerator:
             error_message = self.last_generated_command[len("ERROR:"):].strip()
             self.panel_controller.add_system_message(f"Command generation failed: {error_message}")
         else:
-            success = self.terminal_interactor.insert_command(self.last_generated_command)
+            success = self.ai_terminal_interactor.insert_command(self.last_generated_command)
             
             if success:
                 message = f"Generated command: `{self.last_generated_command}`\n\nCommand has been inserted into terminal. You can edit it before pressing Enter to execute."
