@@ -1,6 +1,13 @@
 # KIterm Code Structure Overview
 
-KIterm is a terminal application integrated with AI capabilities, built with Python and GTK4. The architecture separates concerns across several key modules:
+KIterm is a terminal application integrated with AI capabilities, built with Python and GTK4. 
+
+It uses the following APIs:
+- [VTE - Virtual TErminal widget](https://gnome.pages.gitlab.gnome.org/vte/gtk4/index.html)
+- [GNOME Python API](https://amolenaar.pages.gitlab.gnome.org/pygobject-docs/)
+- [mistune markdown formater](https://mistune.lepture.com/en/latest/api.html)
+
+The architecture separates concerns across several key modules.
 
 ## Naming Conventions
 
