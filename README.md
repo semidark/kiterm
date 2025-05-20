@@ -140,4 +140,4 @@ KIterm supports the following keyboard shortcuts for the terminal:
 3. Press **Enter** to generate the command
 4. The command will be inserted into the terminal prompt without executing it
 5. Review or edit the command as needed, then press **Enter** in the terminal to execute
-6. Click **Explain Command** in the AI panel to get a detailed explanation of what the command does 
+6. Click **Explain Command** in the AI panel to get a detailed explanation of what the command does     
